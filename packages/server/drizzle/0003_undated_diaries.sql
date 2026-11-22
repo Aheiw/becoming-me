@@ -1,0 +1,1 @@
+ALTER TABLE "diary_entries" ALTER COLUMN "entry_date" DROP NOT NULL;

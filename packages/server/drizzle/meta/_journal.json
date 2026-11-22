@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1780633423500,
+      "tag": "0000_narrow_supernaut",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795317546414,
+      "tag": "0001_diary_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795318128712,
+      "tag": "0002_multi_diary_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795319206750,
+      "tag": "0003_undated_diaries",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795321859046,
+      "tag": "0004_interview_diary_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795321859047,
+      "tag": "0005_interview_diary_analysis",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795321859048,
+      "tag": "0006_personal_workspace",
+      "breakpoints": true
+    }
+  ]
+}

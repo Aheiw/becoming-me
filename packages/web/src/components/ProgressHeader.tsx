@@ -1,0 +1,99 @@
+import { useId, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import styles from './ProgressHeader.module.css'
+
+interface LayerProgress {
+  id: string
+  name: string
+  zone: 'CORE' | 'SHAPE' | 'STATE'
+  percent: number
+  count: number
+  threshold: number
+}
+
+export interface ProgressData {
+  overall: number
+  layers: LayerProgress[]
+  totals: {
+    facts: number
+    timeline: number
+    professional: number
+    vignettes: number
+  }
+}
+
+interface Props {
+  data: ProgressData | null
+  remainingTurns?: number | null
+}
+
+const ZONES: Array<'CORE' | 'SHAPE' | 'STATE'> = ['CORE', 'SHAPE', 'STATE']
+
+function dotClass(layer: LayerProgress, s: typeof styles): string {
+  if (layer.percent >= 100) return `${s.dot} ${s.dotDone}`
+  if (layer.count > 0) return `${s.dot} ${s.dotPartial}`
+  return `${s.dot} ${s.dotEmpty}`
+}
+
+export default function ProgressHeader({ data, remainingTurns }: Props) {
+  const { t } = useTranslation()
+  const [expanded, setExpanded] = useState(false)
+
+  const detailId = useId()
+
+  if (!data) return null
+
+  const overall = Math.round(data.overall)
+
+  return (
+    <div className={styles.panel}>
+      <button type="button" className={styles.summary} aria-expanded={expanded} aria-controls={detailId} onClick={() => setExpanded(e => !e)}>
+        <span className={styles.label}>{t('progress.label')}</span>
+        <span className={styles.barWrap}>
+          <span className={styles.bar} aria-hidden="true">
+            <span className={styles.barFill} style={{ width: `${Math.min(overall, 100)}%` }} />
+          </span>
+          <span className={styles.pct}>{overall}%</span>
+        </span>
+        {remainingTurns != null && (
+          <span className={styles.remaining}>{t('progress.remaining', { count: remainingTurns })}</span>
+        )}
+        <span className={styles.toggle} aria-hidden="true">{expanded ? '⌃' : '⌄'}</span>
+      </button>
+
+      <div className={styles.dots}>
+        {data.layers.map(layer => (
+          <span key={layer.id} className={dotClass(layer, styles)} title={`${layer.id} ${t(`dashboard.layers.${layer.id}`, { defaultValue: layer.name })}: ${layer.count}/${layer.threshold}`}>
+            {layer.id}
+          </span>
+        ))}
+      </div>
+
+        <div id={detailId} hidden={!expanded} className={styles.detail}>
+          {ZONES.map(zone => {
+            const layers = data.layers.filter(l => l.zone === zone)
+            return (
+              <div key={zone} className={styles.zone}>
+                <div className={styles.zoneLabel}>{t(`progress.zones.${zone}`)}</div>
+                {layers.map(layer => (
+                  <div key={layer.id} className={styles.layerRow}>
+                    <span className={styles.layerName}>
+                      <span className={styles.layerId}>{layer.id}</span>
+                      {t(`dashboard.layers.${layer.id}`, { defaultValue: layer.name })}
+                    </span>
+                    <div className={styles.layerBar}>
+                      <div
+                        className={styles.layerFill}
+                        style={{ width: `${Math.min(layer.percent, 100)}%` }}
+                      />
+                    </div>
+                    <span className={styles.layerMeta}>{layer.count}/{layer.threshold}</span>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+    </div>
+  )
+}

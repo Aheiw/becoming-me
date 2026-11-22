@@ -1,0 +1,140 @@
+{
+  "app": {
+    "title": "成我",
+    "nav": {
+      "interview": "访谈",
+      "myContext": "关于我",
+      "export": "导出",
+      "diary": "分析日记"
+    },
+    "demo": {
+      "notice": "演示数据不会长期保留。想保留数据，请",
+      "selfHost": "自行部署",
+      "noticeSuffix": "。"
+    },
+    "auth": {
+      "signIn": "登录",
+      "signUp": "注册"
+    },
+    "navigation": "主导航"
+  },
+  "demo": {
+    "rateLimitTitle": "已达今日访谈上限",
+    "rateLimitBody": "演示版本每天最多进行 3 次访谈。请明天再来。",
+    "rateLimitSelfHost": "想不限次数使用，请"
+  },
+  "chat": {
+    "placeholder": "输入你的回答（Ctrl+Enter 发送）",
+    "placeholderEnded": "本轮已结束",
+    "send": "发送",
+    "typing": "正在生成下一个问题…",
+    "sessionEnded": "本轮访谈已结束。",
+    "newSession": "开始新一轮访谈",
+    "summaryTitle": "本轮整理的内容",
+    "endSession": "结束",
+    "endSessionTooltip": "结束并整理本轮访谈",
+    "skip": "跳过这个问题 →",
+    "recordStop": "停止录音",
+    "transcribing": "正在转写…",
+    "voiceInput": "语音输入",
+    "voiceMode": "语音对话",
+    "voiceModeDisabled": "语音对话（需要配置语音服务）",
+    "modelError": "模型配置错误",
+    "intro": "用自己的话聊重要的经历、偏好与选择。",
+    "lifeChapters": "人生片段"
+  },
+  "export": {
+    "copy": "复制",
+    "downloadZip": "下载全部（ZIP）",
+    "other": "其他",
+    "copied": "已复制",
+    "loadError": "暂时无法读取导出内容，请确认本地服务正在运行。",
+    "downloadError": "下载失败，请重试。"
+  },
+  "progress": {
+    "label": "已记录的内容",
+    "toggleLabel": "展开或收起详情",
+    "remaining": "还差 {{count}} 项",
+    "zones": {
+      "CORE": "核心",
+      "SHAPE": "经历与模式",
+      "STATE": "当前状态"
+    }
+  },
+  "dashboard": {
+    "timelineHeading": "人生时间线",
+    "factsHeading": "主要内容",
+    "loading": "正在加载…",
+    "completeness": "各方面的记录进度",
+    "continueInterview": "继续访谈",
+    "collectedData": "已整理的资料",
+    "noData": "暂未记录",
+    "countItems": "{{count}} 项",
+    "layers": {
+      "L1": "价值观与信念",
+      "L2": "自我看法与性格",
+      "L3": "人生经历",
+      "L4": "职业经历与能力",
+      "L5": "人际关系",
+      "L6": "观点与立场",
+      "L7": "恐惧与回避",
+      "L8": "决策与行为习惯",
+      "L9": "目标与方向",
+      "L10": "偏好与做事方式"
+    },
+    "encyclopedia": "我的人生百科",
+    "intro": "把自述与经历整理成主题，随时翻看你对自己的认识。",
+    "topicIndex": "主题目录",
+    "topicNumber": "主题 {{number}}",
+    "emptyTopic": "之后写入这方面的日记或访谈内容，就可以在这里查看。",
+    "loadError": "暂时无法读取百科内容，请确认本地服务正在运行。",
+    "retry": "重试",
+    "present": "至今",
+    "skills": "技能"
+  },
+  "voice": {
+    "networkError": "网络出错了",
+    "sessionEnded": "本轮已结束",
+    "pressToSpeak": "按下说话",
+    "listening": "正在听…",
+    "processing": "正在处理…",
+    "speaking": "AI 正在讲话",
+    "backToText": "✕ 返回文字模式",
+    "tapToStart": "点击开始"
+  },
+  "import": {
+    "complete": "导入完成",
+    "professional": "工作经历",
+    "timeline": "时间线事件",
+    "skills": "技能与个人资料",
+    "aiComment": "💬 AI 观察",
+    "analyzing": "正在分析…",
+    "tooFewData": "目前记录不多，可以继续访谈。",
+    "contextCompleteness": "各方面的记录进度",
+    "contextDesc": "这里按十个方面整理。未谈到的方面可以先留空。",
+    "locked": "通过访谈补充",
+    "countItems": "{{count}} 项",
+    "toInterview": "继续访谈 →",
+    "uploadHeading": "上传简历（可选）",
+    "uploadDesc": "也可以不上传，直接用你自己的话开始。",
+    "uploading": "正在分析…",
+    "dropzone": "拖入 PDF / Excel / CSV，或点击选择",
+    "skip": "跳过，直接访谈",
+    "zones": {
+      "CORE": "核心：价值观与性格",
+      "SHAPE": "经历塑造：履历、能力与关系",
+      "STATE": "当下：目标与偏好"
+    },
+    "uploadError": "上传未完成，请重试。"
+  },
+  "onboarding": {
+    "title": "从你愿意讲的人生经历开始",
+    "description": "用你自己的话聊几个重要的转折点。后面可以再慢慢补其他方面。",
+    "start": "开始访谈",
+    "completed": "初次访谈已完成。",
+    "toInterview": "进入访谈",
+    "generating": "正在整理本轮内容…",
+    "skeletonTitle": "你的个人资料初稿",
+    "skeletonSubtitle": "由本轮访谈整理"
+  }
+}

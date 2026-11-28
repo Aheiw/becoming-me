@@ -1,6 +1,7 @@
 import ContextInbox from './ContextInbox.js'
 import { useRef, useState } from 'react'
 import { chapterFor, findArticleTarget } from '../../../../server/src/personal/articleTopics.js'
+import { groupArticleProposals, type ProposalThemeGroup } from '../../../../server/src/personal/inboxGroups.js'
 import { api, body, categoryName, Empty, EvidenceList, EventLinks, Field, Page, stamp, type Data, type Proposal, type Work } from './shared.js'
 import { ArticleForm, type ArticleFields } from './Articles.js'
 import { mentionedDiaryCards } from '../../../../server/src/personal/contextEvents.js'
@@ -111,14 +112,46 @@ export function ProposalCard({ p, data, work, openEvent, openArticle, openChat, 
     </div>}
   </article>
 }
+function ThemeGroupBatch({ group, work, onSaved }: { group: ProposalThemeGroup; work: Work; onSaved: (receipt: Receipt) => void }) {
+  const [checked, setChecked] = useState<Record<string, boolean>>(() => Object.fromEntries(group.items.map(i => [i.id, true])))
+  const [busy, setBusy] = useState(false)
+  const pickedIds = group.items.filter(i => checked[i.id] !== false).map(i => i.id)
+  async function submit(action: 'accept' | 'dismiss') {
+    if (busy || pickedIds.length < 2) return
+    setBusy(true)
+    try {
+      const res = await work(
+        () => api<{ id?: string; count: number }>('/proposals/batch-article', body({ ids: pickedIds, target: group.targetArticleId, action })),
+        action === 'accept' ? `已合并确认 ${pickedIds.length} 条草稿到百科。` : `已批量驳回 ${pickedIds.length} 条草稿。`,
+      )
+      if (action === 'accept' && res?.id) onSaved({ id: res.id, kind: 'article' })
+    } finally { setBusy(false) }
+  }
+  return <section className={styles.segment}>
+    <strong>{group.targetArticleId ? `补充已有百科《${group.title}》` : `合并新建《${group.title}》`} · {group.items.length} 条同主题草稿</strong>
+    <div className={styles.stack}>{group.items.map(item => <label key={item.id} className={styles.compare}>
+      <input type="checkbox" disabled={busy} checked={checked[item.id] !== false} onChange={e => setChecked(prev => ({ ...prev, [item.id]: e.target.checked }))} />
+      <span> <strong>{item.title}</strong>：{draftContent(item)}</span>
+      <small className={styles.muted}>依据：{item.basis} · {item.evidence.length} 条原话</small>
+    </label>)}</div>
+    <div className={styles.actions}>
+      <button type="button" className={styles.primary} disabled={busy || pickedIds.length < 2} onClick={() => void submit('accept')}>一次并入选中项（{pickedIds.length} 条）</button>
+      <button type="button" disabled={busy || pickedIds.length < 2} onClick={() => void submit('dismiss')}>全部驳回</button>
+    </div>
+  </section>
+}
 export default function Inbox({ data, target, open, work, openEvent, openArticle, openChat, openCard }: { data: Data; target?: string; open: (id?: string) => void; work: Work; openEvent: (id: string) => void; openArticle: (id: string) => void; openChat: () => void; openCard: (id: string) => void }) {
   const [filter, setFilter] = useState<'pending' | 'handled'>('pending'), [receipt, setReceipt] = useState<Receipt>()
   const proposals = data.proposals.filter(p => !p.originId?.startsWith('profile:'))
   const list = proposals.filter(p => (p.status === 'pending') === (filter === 'pending')).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const groups = filter === 'pending' ? groupArticleProposals(list, data.articles.filter(a => !a.deleted)) : []
   const p = list.find(p => p.id === target) ?? list[0]
-  return <Page kicker="编辑台 / 收件箱" title="待核对的材料" hint="草稿没问题就直接确认；需要调整再编辑。保存后留在收件箱，可继续审核。">
+  return <Page kicker="编辑台 / 收件箱" title="待核对的材料" hint="草稿没问题就直接确认；需要调整再编辑。多条指向同一百科时可按组一次并入。">
     <div className={styles.actions}><button type="button" aria-pressed={filter === 'pending'} onClick={() => { setFilter('pending'); open() }}>待审核 · {proposals.filter(p => p.status === 'pending').length}</button><button type="button" aria-pressed={filter === 'handled'} onClick={() => { setFilter('handled'); open() }}>已处理</button></div>
     {receipt && <div className={styles.actions}><span role="status">{receipt.kind === 'event' ? '事件已保存' : '百科已保存'}</span><button type="button" onClick={() => (receipt.kind === 'event' ? openEvent : openArticle)(receipt.id)}>查看刚保存的档案</button></div>}
+    {groups.length > 0 && <details className={styles.details} open><summary>同主题打包审核 · {groups.length} 组可一次并入</summary>
+      <div className={styles.stack}>{groups.map(g => <ThemeGroupBatch key={g.key} group={g} work={work} onSaved={setReceipt} />)}</div>
+    </details>}
     <div className={styles.split}><div className={styles.list}>{list.length ? list.map(item => <button type="button" key={item.id} aria-current={p?.id === item.id ? 'true' : undefined} onClick={() => open(item.id)}><small>{kindName[item.kind]} · {item.kind === 'article' ? categoryName(item.category) : originName[item.origin]}</small><strong>{item.title}</strong></button>) : <Empty>这里暂时没有建议。</Empty>}</div>
     {p && <ProposalCard key={p.id} p={p} data={data} work={work} openEvent={openEvent} openArticle={openArticle} openChat={openChat} onSaved={setReceipt} />}</div>
     <ContextInbox data={data} work={work} openCard={openCard} />

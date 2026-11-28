@@ -653,6 +653,61 @@ personalRoute.post('/articles/:id/restore', async c => {
   })
   return c.json({ ok: true })
 })
+personalRoute.post('/proposals/batch-article', async c => {
+  const input = await parse(c.req, z.object({
+    ids: z.array(key).min(2).max(12).refine(v => new Set(v).size === v.length),
+    target: key.optional(),
+    action: z.enum(['accept', 'dismiss']),
+  }))
+  const db = c.get('db'), userId = c.get('userId')
+  const result = await changeState(db, userId, async (state, tx) => {
+    const list = input.ids.map(id => requireProposal(state, id))
+    for (const p of list) {
+      if (p.originId?.startsWith('profile:')) throw new WorkspaceError('请在个人画像的长期对话里修订这个判断。', 409)
+      if (p.status === 'accepted' || p.status === 'dismissed') throw new WorkspaceError('选中的建议里已有条目被处理过，请刷新后重试。', 409)
+    }
+    if (input.action === 'dismiss') {
+      for (const p of list) p.status = 'dismissed'
+      return { count: list.length }
+    }
+    for (const p of list) {
+      if (p.kind !== 'article' || p.operation === 'revise') throw new WorkspaceError('只有普通百科补充草稿才能打包并入。', 409)
+    }
+    const active = (await readArticles(tx, userId, state)).filter(a => !a.deleted)
+    const targetId = input.target
+      ?? list.map(p => p.articleId ?? findArticleTarget(active, p)?.id).find(Boolean)
+    const articleId = targetId ?? randomUUID()
+    const history = targetId ? await articleHistory(tx, userId, state, targetId) : [], last = history.at(-1)
+    if (targetId && (!last || last.action === 'delete')) throw new WorkspaceError('找不到可合并写入的条目。', 404)
+
+    let fact = last?.fact ?? ''
+    for (const p of list) {
+      const part = (p.status === 'corrected' ? p.correction ?? p.content : p.content).trim()
+      if (!part) continue
+      if (!fact) fact = part
+      else if (!fact.includes(part)) fact = `${fact}\n\n${part}`
+    }
+    const limits = [...new Set([last?.limits, ...list.map(p => p.counterpoint)].filter(Boolean))].join('\n\n')
+    if (!fact || fact.length > 5000 || limits.length > 5000) {
+      throw new WorkspaceError('合并后超出百科正文长度限制，请拆开编辑保存。', 409)
+    }
+    const first = list[0]
+    const fields = {
+      title: last?.title ?? first.title,
+      category: (last?.category ?? first.category) as typeof category._type,
+      chapter: last?.chapter ?? first.chapter,
+      fact,
+      limits,
+      eventIds: [...new Set([...(last?.eventIds ?? []), ...list.flatMap(p => p.eventIds)])],
+    }
+    const mergedEvidence = list.reduce<Evidence[]>((all, p) => combineEvidence(all, p.evidence), last?.evidence ?? [])
+    const article = attachEvidence(state, fields, mergedEvidence)
+    await writeArticle(tx, userId, state, articleId, article, `批量确认并入 ${list.length} 条草稿`, last ? 'edit' : 'create')
+    for (const p of list) { p.status = 'accepted'; p.articleId = articleId }
+    return { id: articleId, count: list.length }
+  })
+  return c.json(result)
+})
 personalRoute.post('/proposals/:id', async c => {
   const input = await parse(c.req, actInput), id = c.req.param('id'), userId = c.get('userId')
   const result = await changeState(c.get('db'), userId, async (state, tx) => {

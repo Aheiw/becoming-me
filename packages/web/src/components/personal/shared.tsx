@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Article, Chapter, ComparisonFocus, ContextSuggestion, Dream, EventImportance, Evidence, LifeContext, LifeEvent, Proposal, TurningPoint } from '../../../../server/src/personal/types.js'
 import type { ProfileReport } from '../../../../server/src/personal/profileTypes.js'
 import { diaryCategoryLabels } from '../DiaryEvidence.js'
+import { findQuoteRange } from '../../lib/quoteMatch.js'
 import styles from './Personal.module.css'
 
 export type { Article, Chapter, ComparisonFocus, ContextSuggestion, Dream, EventImportance, Evidence, LifeContext, LifeEvent, Proposal, TurningPoint }
@@ -43,15 +44,15 @@ export function Field({ label, children, hint }: { label: string; children: Reac
 }
 export function Empty({ children }: { children: ReactNode }) { return <div className={styles.empty}>{children}</div> }
 export function EvidenceList({ evidence, title = '相关原话', requested }: { evidence: Evidence[]; title?: string; requested?: { id: string } }) {
-  const [content, setContent] = useState<{ key: string; text: string; error?: boolean; loading?: boolean; full?: boolean } | null>(null)
+  const [content, setContent] = useState<{ key: string; text: string; error?: boolean; loading?: boolean; full?: boolean; pad?: number } | null>(null)
   const details = useRef<HTMLDetailsElement>(null)
   const keyFor = (e: Evidence, index: number) => [e.kind, e.id, e.index ?? '', index].join(':')
   async function loadOriginal(e: Evidence, key: string, signal?: AbortSignal) {
-    setContent({ key, text: '正在读取原文…', loading: true })
+    setContent({ key, text: '正在读取原文…', loading: true, pad: 360 })
     try {
       const suffix = e.index === undefined ? '' : '?index=' + e.index
       const row = await api<{ content: string }>('/evidence/' + e.kind + '/' + encodeURIComponent(e.id) + suffix, { signal })
-      if (!signal?.aborted) setContent(prev => prev?.key === key ? { key, text: row.content } : prev)
+      if (!signal?.aborted) setContent(prev => prev?.key === key ? { key, text: row.content, pad: 360 } : prev)
     } catch (err) { if (!signal?.aborted) setContent(prev => prev?.key === key ? { key, text: (err as Error).message, error: true } : prev) }
   }
   useEffect(() => {
@@ -67,10 +68,12 @@ export function EvidenceList({ evidence, title = '相关原话', requested }: { 
   return <details ref={details} className={styles.details}><summary>{title} · {evidence.length}</summary>{evidence.map((e, index) => {
     const key = keyFor(e, index)
     const show = content?.key === key
-    const offset = show && !content?.loading && !content?.error && e.quote ? content.text.indexOf(e.quote) : -1
-    const end = offset + e.quote.length
-    const from = offset >= 0 && !content?.full ? Math.max(0, offset - 200) : 0
-    const to = offset >= 0 && !content?.full ? end + 200 : content?.text.length ?? 0
+    const range = show && !content?.loading && !content?.error && e.quote ? findQuoteRange(content.text, e.quote) : null
+    const offset = range?.start ?? -1
+    const end = range?.end ?? -1
+    const pad = content?.pad ?? 360
+    const from = offset >= 0 && !content?.full ? Math.max(0, offset - pad) : 0
+    const to = offset >= 0 && !content?.full ? end + pad : content?.text.length ?? 0
     return <div key={key} className={styles.source}><small>{e.kind === 'chat' ? '对话' : '日记'} · {e.date ?? '日期未知'} {e.label && `· ${e.label}`}</small>
       <blockquote>{e.quote}</blockquote>
       <button type="button" className={styles.link} onClick={async () => {
@@ -80,7 +83,10 @@ export function EvidenceList({ evidence, title = '相关原话', requested }: { 
       {show && <>
         {!content.error && !content.loading && offset < 0 && <p className={styles.muted}>未能在原件中逐字定位这段引文，下方展示保存的原文。</p>}
         <pre role={content.error ? 'alert' : undefined} className={styles.original}>{offset < 0 ? content.text : <>{from > 0 && '…'}{content.text.slice(from, offset)}<mark>{content.text.slice(offset, end)}</mark>{content.text.slice(end, to)}{to < content.text.length && '…'}</>}</pre>
-        {offset >= 0 && (content.full || from > 0 || to < content.text.length) && <button type="button" className={styles.link} onClick={() => setContent(prev => prev?.key === key ? { ...prev, full: !prev.full } : prev)}>{content.full ? '只看引文附近' : '展开全文'}</button>}
+        {offset >= 0 && (content.full || from > 0 || to < content.text.length) && <div className={styles.actions}>
+          {!content.full && (from > 0 || to < content.text.length) && <button type="button" className={styles.link} onClick={() => setContent(prev => prev?.key === key ? { ...prev, pad: (prev.pad ?? 360) + 500 } : prev)}>多看前后一段</button>}
+          <button type="button" className={styles.link} onClick={() => setContent(prev => prev?.key === key ? { ...prev, full: !prev.full } : prev)}>{content.full ? '只看引文附近' : '展开全文'}</button>
+        </div>}
       </>}
     </div>
   })}</details>

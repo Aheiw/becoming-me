@@ -6,7 +6,8 @@ export type Evidence = {
   kind: 'diary' | 'chat' | 'saved-diary'; id: string; index?: number; quote: string; date: string | null; label?: string
 }
 export type EventImportance = 'regular' | 'milestone' | 'turning'
-export type ComparisonFocus = { eventId?: string; articleId?: string }
+export type ComparisonSlice = { kind: 'context' | 'chapter'; id: string }
+export type ComparisonFocus = { eventId?: string; articleId?: string; sliceA?: ComparisonSlice; sliceB?: ComparisonSlice }
 export type LifeEvent = {
   id: string; title: string; date: string; facts: string; analysis: string; evidence: Evidence[]; updatedAt: string
   cause?: string; outcome?: string; dateNote?: string; outlook?: string; impact?: string; prediction?: string; chapterId?: string; followups?: Followup[]; topics?: string[]; importance?: EventImportance

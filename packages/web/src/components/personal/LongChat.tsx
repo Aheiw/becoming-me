@@ -98,8 +98,11 @@ export default function LongChat({ allowDiary, setAllowDiary, hidden, data, work
   const mode = profileFocus ? 'chat' : modeChoice && modeChoice.dreamId === activeDream?.id ? modeChoice.mode : activeDream ? 'dream' : 'chat'
   const comparedArticle = data?.articles.find(a => !a.deleted && a.id === data.comparisonFocus?.articleId)
   const comparedEvent = data?.events.find(e => e.id === data.comparisonFocus?.eventId && (!data.comparisonFocus?.articleId || comparedArticle?.eventIds.includes(e.id)))
-  const comparisonTitles = [comparedEvent?.title, comparedArticle?.title].filter(Boolean).join(' / ')
-  const comparisonPrompt = '请对照我选的资料：当时的我怎么说？与现在的理解有什么不同？有哪些反例或缺失的证据？没有足够依据就直说。'
+  const sliceLabel = (s?: { kind: 'context' | 'chapter'; id: string }) => !s ? '' : s.kind === 'context' ? (data?.contexts.find(c => c.id === s.id)?.name ?? '') : (data?.chapters.find(c => c.id === s.id)?.title ?? '')
+  const sliceNames = data?.comparisonFocus?.sliceA && data?.comparisonFocus?.sliceB ? [sliceLabel(data.comparisonFocus.sliceA), sliceLabel(data.comparisonFocus.sliceB)].filter(Boolean) : []
+  const comparisonTitles = sliceNames.length === 2 ? `${sliceNames[0]} vs ${sliceNames[1]}` : [comparedEvent?.title, comparedArticle?.title].filter(Boolean).join(' / ')
+  const comparisonPrompt = sliceNames.length === 2 ? '请对照这两个时期或环境：我哪些做法、边界或看重的东西变了？哪些其实没变？请结合原话和反例具体说说。' : '请对照我选的资料：当时的我怎么说？与现在的理解有什么不同？有哪些反例或缺失的证据？没有足够依据就直说。'
+  // slice comparison prompt handled above
   const drafts = new Map<string, Data['proposals']>()
   for (const p of data?.proposals ?? []) if (p.chatReplyId && !p.originId?.startsWith('profile:')) {
     const items = drafts.get(p.chatReplyId) ?? []

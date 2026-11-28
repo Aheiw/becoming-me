@@ -7,6 +7,7 @@ import { APICallError, tool } from 'ai'
 import { diaryEntries, interviewDiaryBatches, rawLogs, STRUCTURED_FACT_CATEGORIES } from '../db/schema.js'
 import { articleChapterIds, chapterFor, findArticleTarget, type ArticleTarget } from '../personal/articleTopics.js'
 import { archiveDiaries, hash, articleHistory, articleVersion, changeState, combineEvidence, getChat, getState, importHistoricalAnalysis, now, readArticles, saveTurn, WorkspaceError, writeArticle } from '../personal/store.js'
+import { compareSlices } from '../personal/sliceCompare.js'
 import { memoryDocs, searchMemory } from '../personal/search.js'
 import { recallChat } from '../personal/chatRecall.js'
 import { aliasLength, aliasLimit, matchesContextName, nameKey, uniqueAliases } from '../personal/contextNames.js'
@@ -28,7 +29,13 @@ const key = text(120)
 const ids = z.array(key).max(12).default([])
 const contextEventIds = z.array(key).max(1000)
 const approximateDate = z.string().refine(value => !value || /^\d{4}(?:-(?:0[1-9]|1[0-2]))?$/.test(value) || z.string().date().safeParse(value).success).default('')
-const comparisonInput = z.object({ eventId: key.optional(), articleId: key.optional() }).refine(v => v.eventId || v.articleId)
+const sliceInput = z.object({ kind: z.enum(['context', 'chapter']), id: key })
+const comparisonInput = z.object({
+  eventId: key.optional(),
+  articleId: key.optional(),
+  sliceA: sliceInput.optional(),
+  sliceB: sliceInput.optional(),
+}).refine(v => Boolean(v.eventId || v.articleId || (v.sliceA && v.sliceB)))
 const eventInput = z.object({ title: text(600), date: approximateDate, dateNote: optionalText(120), cause: optionalText(3000), outcome: optionalText(4000), facts: text(5000), analysis: optionalText(3000),
   outlook: optionalText(4000), impact: optionalText(4000), prediction: optionalText(3000), chapterId: key.optional(), contextIds: contextEventIds.optional(), topics: z.array(text(24)).max(12).optional(), importance: z.enum(['regular', 'milestone', 'turning']).nullable().optional() })
 const aliasesInput = z.array(text(aliasLength)).max(aliasLimit).optional()
@@ -151,6 +158,13 @@ personalRoute.post('/focus', async c => {
       const article = comparison.articleId ? (await readArticles(tx, userId, state)).find(a => a.id === comparison.articleId && !a.deleted) : undefined
       if (comparison.articleId && !article) throw new WorkspaceError('找不到可对照的百科条目。', 404)
       if (article && comparison.eventId && !article.eventIds.includes(comparison.eventId)) throw new WorkspaceError('这件事不在该条目的关联事件里。')
+      for (const slice of [comparison.sliceA, comparison.sliceB]) {
+        if (!slice) continue
+        const found = slice.kind === 'context'
+          ? state.contexts?.some(c => c.id === slice.id)
+          : state.chapters?.some(c => c.id === slice.id)
+        if (!found) throw new WorkspaceError('找不到选定对比的时期或环境档案。', 404)
+      }
       state.focusId = undefined; state.dreamFocusId = undefined; state.diaryFocusId = undefined
     }
     if (comparison !== undefined) state.comparisonFocus = comparison ?? undefined
@@ -244,16 +258,46 @@ personalRoute.post('/chat', async c => {
       const comparedEvent = comparison?.eventId && (!comparison.articleId || comparedArticle?.relatedEventIds?.includes(comparison.eventId)) ? docs.find(d => d.kind === 'event' && d.sourceId === comparison.eventId) : undefined
       const primaryDocs = [comparedEvent, comparedArticle].flatMap(d => d ? [d] : [])
       const eventRecord = comparedEvent && state.events.find(e => e.id === comparedEvent.sourceId)
-      const comparisonView = primaryDocs.length ? {
+      const sliceDiff = comparison?.sliceA && comparison?.sliceB
+        ? compareSlices(state, await readArticles(db, userId, state), comparison.sliceA, comparison.sliceB)
+        : null
+      const packSlice = (s: NonNullable<typeof sliceDiff>['a']) => ({
+        title: s.title, subtitle: s.subtitle, summary: s.summary.slice(0, 600),
+        events: s.events.slice(0, 8).map(e => ({
+          id: e.id, date: e.dateNote || e.date || '时间未定', title: e.title,
+          facts: e.facts.slice(0, 260),
+          ...(e.outlook && { outlook: e.outlook.slice(0, 260) }),
+          ...(e.impact && { impact: e.impact.slice(0, 220) }),
+          quotes: e.evidence.slice(0, 2).map(q => ({ date: q.date, quote: q.quote.slice(0, 220) })),
+        })),
+        articles: s.articles.slice(0, 8).map(a => ({ id: a.id, title: a.title, fact: a.fact.slice(0, 260), ...(a.limits && { limits: a.limits.slice(0, 180) }) })),
+      })
+      const comparisonView = (primaryDocs.length || sliceDiff) ? {
         selected: primaryDocs.map(d => ({ kind: d.kind, id: d.sourceId, title: d.title })),
         // Keep the first-person and later accounts visible even if a long event's searchable text was truncated.
         eventView: eventRecord && { date: eventRecord.date, dateNote: eventRecord.dateNote, recordedThought: eventRecord.outlook?.slice(0, 1200),
           recordedImpact: eventRecord.impact?.slice(0, 800), laterReflections: eventRecord.followups?.slice(-2).map(f => ({ date: f.date, reflection: f.reflection.slice(0, 600) })) },
-        instruction: '优先对照选定材料。区分当时原话及其记录时间、可确认事实、事后回看、目前的百科表述。指出真正的分歧、反例或证据缺口；没有就直说，不为对照而制造冲突，也不擅自修订。',
+        ...(sliceDiff && {
+          sliceComparison: {
+            a: packSlice(sliceDiff.a),
+            b: packSlice(sliceDiff.b),
+            sharedTopics: sliceDiff.sharedArticles.map(a => a.title),
+            onlyATopics: sliceDiff.onlyAArticles.map(a => a.title),
+            onlyBTopics: sliceDiff.onlyBArticles.map(a => a.title),
+          },
+        }),
+        instruction: sliceDiff
+          ? '优先对照这两个时期或环境的切片：比较在这两个阶段/环境下，用户看重的东西、行动方式、关系边界或看法有哪些真正发生了变化，哪些保持稳定；区分当时的原话、事后回看与现在的百科表述；指出反例或缺失证据，没有足够材料就直说，不为对照而制造冲突。'
+          : '优先对照选定材料。区分当时原话及其记录时间、可确认事实、事后回看、目前的百科表述。指出真正的分歧、反例或证据缺口；没有就直说，不为对照而制造冲突，也不擅自修订。',
       } : undefined
+      const sliceDocs = sliceDiff
+        ? docs.filter(d =>
+            (d.kind === 'event' && (sliceDiff.a.events.some(e => e.id === d.sourceId) || sliceDiff.b.events.some(e => e.id === d.sourceId))) ||
+            (d.kind === 'article' && (sliceDiff.a.articles.some(a => a.id === d.sourceId) || sliceDiff.b.articles.some(a => a.id === d.sourceId)))).slice(0, 8)
+        : []
       const adjacentIds = new Set(comparedArticle?.relatedEventIds ?? [])
       const adjacent = docs.filter(d => (comparedArticle && d.kind === 'event' && adjacentIds.has(d.sourceId)) || (comparedEvent && d.kind === 'article' && d.relatedEventIds?.includes(comparedEvent.sourceId))).slice(0, 3)
-      const matches = [...new Map([...primaryDocs, ...adjacent, ...linked].map(d => [d.id, d])).values()].slice(0, 8)
+      const matches = [...new Map([...primaryDocs, ...sliceDocs, ...adjacent, ...linked].map(d => [d.id, d])).values()].slice(0, 10)
       const correctionHistory = isolated ? [] : correctionsForModel(state, message)
       const context = { mode, ...(explicitChat && { chatArchive: { sources: explicitChat.excerpts } }), summary: isolated ? undefined : state.summary, comparison: comparisonView, ...(offerDream && { dreamDraft: true }), ...(explicitDiary && { diaryArchive: {
         sources: explicitDiary.excerpts, available: explicitDiary.available, extractEvents: intent.extractEvents,

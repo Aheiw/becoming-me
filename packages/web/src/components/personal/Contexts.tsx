@@ -2,7 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { indexEventContexts } from '../../../../server/src/personal/contextEvents.js'
 import { EventPicker } from './Events.js'
 import { aliasDraft, AliasField, personAliases } from './PersonAliases.js'
-import { api, body, Empty, EvidenceList, EventLinks, Field, Page, type Data, type LifeContext, type Work } from './shared.js'
+import { api, body, Empty, EvidenceList, EventLinks, Field, Page, type Data, type LifeContext, type OpenComparison, type Work } from './shared.js'
+import SliceCompare from './SliceCompare.js'
 import styles from './Personal.module.css'
 
 type Draft = Omit<LifeContext, 'id' | 'updatedAt'>
@@ -69,7 +70,7 @@ function RelationshipMap({ center, cards, events, open, openEvent }: { center: L
   </section>
 }
 
-export default function Contexts({ data, target, work, open, openEvent }: { data: Data; target?: string; work: Work; open: (id?: string) => void; openEvent: (id: string) => void }) {
+export default function Contexts({ data, target, work, open, openEvent, openArticle, discuss, busy }: { data: Data; target?: string; work: Work; open: (id?: string) => void; openEvent: (id: string) => void; openArticle: (id: string) => void; discuss: OpenComparison; busy: boolean }) {
   const [kind, setKind] = useState<Draft['kind']>('person')
   const [editing, setEditing] = useState(false)
   const [confirm, setConfirm] = useState(false)
@@ -104,5 +105,8 @@ export default function Contexts({ data, target, work, open, openEvent }: { data
         <div className={styles.actions}><button type="button" onClick={() => setEditing(true)}>编辑档案</button>{confirm ? <><button type="button" onClick={() => void remove(current)}>确认删除档案</button><button type="button" onClick={() => setConfirm(false)}>取消</button></> : <button type="button" onClick={() => setConfirm(true)}>删除</button>}</div>
       </section> : <Empty>选一张卡，就能查阅它和哪些经历、人物或环境连在一起。</Empty>}
     </div>
+    <details className={styles.details}><summary>跨环境 / 跨时期对比（看看换了环境或阶段后，哪些变了、哪些没变）</summary>
+      <SliceCompare data={data} defaultKind="context" discuss={discuss} openEvent={openEvent} openArticle={openArticle} busy={busy} />
+    </details>
   </Page>
 }

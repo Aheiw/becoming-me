@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { bookSections, eventImportance, importanceLabel, turningEvents } from '../../../../server/src/personal/reading.js'
-import { Empty, EvidenceList, Page, eventTime, type Data, type LifeEvent } from './shared.js'
+import { Empty, EvidenceList, Page, eventTime, type Data, type LifeEvent, type OpenComparison } from './shared.js'
+import SliceCompare from './SliceCompare.js'
 import styles from './Personal.module.css'
 
 export function BookPreview({ data, open }: { data: Data; open: (id?: string) => void }) {
@@ -12,7 +13,7 @@ export function BookPreview({ data, open }: { data: Data; open: (id?: string) =>
   </section>
 }
 
-export default function LifeBook({ data, target, open, openEvent }: { data: Data; target?: string; open: (id?: string) => void; openEvent: (id: string) => void }) {
+export default function LifeBook({ data, target, open, openEvent, openArticle, discuss, busy }: { data: Data; target?: string; open: (id?: string) => void; openEvent: (id: string) => void; openArticle: (id: string) => void; discuss: OpenComparison; busy: boolean }) {
   const [view, setView] = useState<'main' | 'turning' | 'all'>('main')
   const sections = useMemo(() => bookSections(data.events, data.chapters), [data.events, data.chapters])
   const turns = useMemo(() => turningEvents(data.turningPoints), [data.turningPoints])
@@ -48,5 +49,8 @@ export default function LifeBook({ data, target, open, openEvent }: { data: Data
         {view !== 'all' && (active ? active.events.length : data.events.length) > 0 && !(active ? active.events : data.events).some(includes) && <button type="button" onClick={() => setView('all')}>查看未标记的事件</button>}
       </div>
     </div>
+    <details className={styles.details}><summary>按阶段或环境对照变化（哪些地方变了、哪些没变）</summary>
+      <SliceCompare data={data} defaultKind="chapter" discuss={discuss} openEvent={openEvent} openArticle={openArticle} busy={busy} />
+    </details>
   </Page>
 }

@@ -3,7 +3,15 @@ import { streamObject } from 'ai'
 import { analyzeDiaries } from './diary.js'
 import { MAX_SUGGESTIONS, type DiaryAnalysisItem } from './diarySchemas.js'
 
-vi.mock('ai', () => ({ streamObject: vi.fn() }))
+vi.mock('ai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ai')>()
+  return {
+    ...actual,
+    streamObject: vi.fn(),
+    generateObject: vi.fn(),
+    generateText: vi.fn(),
+  }
+})
 vi.mock('./provider.js', () => ({ getLLM: vi.fn() }))
 
 const newer = { date: '2026-11-22', filename: null, content: 'I prefer A when alone.' }

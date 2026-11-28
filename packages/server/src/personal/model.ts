@@ -87,3 +87,64 @@ export async function draftArticleMerge(articles: Article[], signal: AbortSignal
   if (!text.trim() || text.trim().length > 5000 || text.includes('\0')) throw new Error('invalid merge draft')
   return text.trim()
 }
+
+export type MergeSuggestionGroup = { ids: string[]; suggestedTitle: string; reason: string; caution: string }
+
+const mergeSuggestionSchema = z.object({
+  groups: z.array(z.object({
+    ids: z.array(z.string()),
+    suggestedTitle: z.string(),
+    reason: z.string(),
+    caution: z.string(),
+  })),
+})
+
+function normalizeMergeGroups(raw: unknown, allowedIds: Set<string>): MergeSuggestionGroup[] {
+  const list = Array.isArray((raw as { groups?: unknown })?.groups) ? (raw as { groups: unknown[] }).groups
+    : Array.isArray(raw) ? raw : []
+  const seen = new Set<string>(), groups: MergeSuggestionGroup[] = []
+  for (const entry of list) {
+    if (!entry || typeof entry !== 'object') continue
+    const r = entry as Record<string, unknown>
+    if (!Array.isArray(r.ids)) continue
+    const ids = [...new Set(r.ids.filter((id): id is string => typeof id === 'string' && allowedIds.has(id)))].slice(0, 6)
+    if (ids.length < 2) continue
+    const sig = [...ids].sort().join(',')
+    if (seen.has(sig)) continue
+    seen.add(sig)
+    const reason = typeof r.reason === 'string' ? r.reason.replaceAll('\0', '').trim().slice(0, 400) : ''
+    if (!reason) continue
+    const suggestedTitle = typeof r.suggestedTitle === 'string' ? r.suggestedTitle.replaceAll('\0', '').trim().slice(0, 160) : ''
+    const caution = typeof r.caution === 'string' ? r.caution.replaceAll('\0', '').trim().slice(0, 300) : ''
+    groups.push({ ids, suggestedTitle, reason, caution })
+    if (groups.length >= 5) break
+  }
+  return groups
+}
+
+export async function suggestDuplicateArticles(
+  articles: { id: string; title: string; fact: string; limits?: string }[],
+  signal: AbortSignal,
+): Promise<MergeSuggestionGroup[]> {
+  if (articles.length < 2) return []
+  const allowed = new Set(articles.map(a => a.id))
+  const system = `${base} 从用户同一章节的百科条目中，找出确实在回答同一个长期问题、只是换了说法或彼此补充的可能重复分组（每组 2-6 条，最多 5 组）。相似但属于不同问题、不同对象或不同维度的条目必须保留分开，绝不硬凑。
+每组输出：ids（必须原样使用提供的条目 id）、suggestedTitle（建议合并后的主题标题）、reason（说明为什么它们是同一主题，指出具体重合点或线索）、caution（若有需要用户自己核对的边界差异或保留点，简短提醒；无则留空字符串）。没有明显重复时 groups 返回空数组。`
+  const prompt = JSON.stringify(articles.map(a => ({ id: a.id, title: a.title, fact: a.fact.slice(0, 320), ...(a.limits && { limits: a.limits.slice(0, 160) }) })))
+  const llm = getLLM()
+  for (const mode of [undefined, 'json'] as const) {
+    try {
+      const { object } = await generateObject({ model: llm, ...(mode && { mode }), schema: mergeSuggestionSchema, abortSignal: signal, maxRetries: 0, system, prompt })
+      return normalizeMergeGroups(object, allowed)
+    } catch (err) {
+      if (signal.aborted) throw err
+    }
+  }
+  const { text } = await generateText({
+    model: llm, abortSignal: signal, maxRetries: 0,
+    system: system + '\n只输出合法 JSON 对象：{"groups":[{"ids":["..."],"suggestedTitle":"...","reason":"...","caution":""}]}，不要输出 Markdown 代码块。',
+    prompt,
+  })
+  const cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim().replace(/^```(?:json)?\s*|\s*```$/gi, '').trim()
+  return normalizeMergeGroups(JSON.parse(cleaned), allowed)
+}

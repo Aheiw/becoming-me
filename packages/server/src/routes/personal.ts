@@ -16,7 +16,7 @@ import { applyProfileDrafts, profileContext } from '../personal/profile.js'
 import { profileRoute } from './profile.js'
 import { trackLocalRequest } from '../personal/maintenance.js'
 import { diaryEntriesSchema } from '../llm/diarySchemas.js'
-import { analyzeDream, draftArticleMerge, findGaps, captureTurn, correctionsForModel, docForModel, proposalForModel, reviewEvents, streamConversation, type ModelDraft } from '../personal/model.js'
+import { analyzeDream, draftArticleMerge, findGaps, captureTurn, correctionsForModel, docForModel, proposalForModel, reviewEvents, streamConversation, suggestDuplicateArticles, type ModelDraft } from '../personal/model.js'
 import type { Article, ComparisonFocus, Evidence, LifeContext, LifeEvent, PersonalState, Proposal } from '../personal/types.js'
 import { exportPersonalBook } from '../personal/export.js'
 import type { AppVariables } from '../types.js'
@@ -521,6 +521,20 @@ function mergedFields(sources: Awaited<ReturnType<typeof mergeSources>>) {
     evidence: sources.reduce<Evidence[]>((all, { last }) => combineEvidence(all, last.evidence), []),
   }
 }
+personalRoute.post('/articles/merge-suggestions', async c => {
+  const { chapter } = await parse(c.req, z.object({ chapter: z.enum(articleChapterIds) }))
+  const db = c.get('db'), userId = c.get('userId'), state = await getState(db, userId)
+  const candidates = (await readArticles(db, userId, state))
+    .filter(a => !a.deleted && chapterFor(a).id === chapter)
+    .slice(0, 45)
+  if (candidates.length < 2) return c.json({ groups: [] })
+  const finish = trackLocalRequest()
+  try {
+    const groups = await suggestDuplicateArticles(candidates, AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(90_000)]))
+    return c.json({ groups })
+  } catch { throw new WorkspaceError('暂时未能完成相似主题排查，现有百科未改动。', 409) }
+  finally { finish() }
+})
 personalRoute.post('/articles/merge-preview', async c => {
   const { ids } = await parse(c.req, z.object({ ids: mergeSelection }))
   const db = c.get('db'), userId = c.get('userId')

@@ -90,3 +90,70 @@ it('maps a streamed schema error without exposing the provider message', async (
     },
   )
 })
+
+it('falls back to chat completions when responses streams a summary then fails structured output', async () => {
+  fakeProvider()
+  const suggestion = { category: 'preferences', fact: '喜欢在比赛前先尝试不同方案。', citations: [{ source: 1, quote: diary.content }], basis: '虚构测试。' }
+  const server = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith('/responses')) {
+      return sse([
+        { type: 'response.reasoning_summary_text.delta', item_id: 'r1', output_index: 0, summary_index: 0, delta: '先梳理要点' },
+        { type: 'response.output_text.delta', delta: '{"bad":true}' },
+        { type: 'response.completed', response: { usage: { input_tokens: 10, output_tokens: 8 } } },
+      ])
+    }
+    const reqBody = JSON.parse(String(init?.body ?? '{}'))
+    const base = { id: 'chat-ok', created: 1760000000, model: 'test-only' }
+    const delta = {
+      role: 'assistant',
+      content: null,
+      tool_calls: [{ index: 0, id: 't1', type: 'function', function: { name: reqBody.tools?.[0]?.function?.name ?? 'json', arguments: JSON.stringify({ elements: [suggestion] }) } }],
+    }
+    const chunk = (d: object, reason: string | null, usage?: object) =>
+      `data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: d, finish_reason: reason }], ...(usage && { usage }) })}\n\n`
+    return new Response(
+      chunk(delta, null) + chunk({}, 'tool_calls', { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 }) + 'data: [DONE]\n\n',
+      { headers: { 'Content-Type': 'text/event-stream' } },
+    )
+  })
+  vi.stubGlobal('fetch', server)
+  const summaries: string[] = []
+  const result = await analyzeDiaries([diary], { workspace: true, onSummary: delta => { summaries.push(delta) } })
+  expect(summaries).toEqual(['先梳理要点'])
+  expect(result).toEqual([suggestion])
+  expect(server).toHaveBeenCalledTimes(2)
+})
+
+it('falls back to plain text JSON extraction and normalizes overlong/loose fields', async () => {
+  fakeProvider()
+  const overlongBasis = '这是超长依据。'.repeat(70)
+  let call = 0
+  const server = vi.fn(async () => {
+    call++
+    if (call <= 2) {
+      return new Response(JSON.stringify({ error: { message: 'tool and json modes unsupported' } }), { status: 400, headers: { 'Content-Type': 'application/json' } })
+    }
+    const raw = `<think>内部推理不该泄露</think>\n\`\`\`json\n[{"category":"life_events","fact":"${diary.content}","citations":[{"source":1,"quote":"${diary.content}"}],"basis":"${overlongBasis}","eventDraft":{"date":"2026/1/2","cause":"试试","outcome":"完成"}}]\n\`\`\``
+    return new Response(JSON.stringify({
+      id: 'chat-text', created: 1760000000, model: 'test-only',
+      choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: raw } }],
+      usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 },
+    }), { headers: { 'Content-Type': 'application/json' } })
+  })
+  vi.stubGlobal('fetch', server)
+  const result = await analyzeDiaries([diary], { workspace: true })
+  expect(result).toHaveLength(1)
+  expect(result[0].basis.length).toBe(350)
+  expect(result[0].eventDraft).toEqual({ date: '2026-01-02', cause: '试试', outcome: '完成' })
+})
+
+it('distinguishes length truncation in modelFailure without leaking diary text', () => {
+  const err = Object.assign(new Error('No object generated'), {
+    name: 'AI_NoObjectGeneratedError',
+    finishReason: 'length',
+    text: 'PRIVATE_DIARY_TEXT',
+  })
+  const mapped = modelFailure(err)
+  expect(mapped).toMatchObject({ status: 502, message: expect.stringContaining('长度限制被截断') })
+  expect(mapped?.message).not.toContain('PRIVATE_DIARY_TEXT')
+})

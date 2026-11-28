@@ -1,5 +1,5 @@
 import { mobileClient, requirePairing } from './lib/mobileAccess.js'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Show, SignInButton, SignUpButton, UserButton } from '@clerk/react'
 import SimpleMarkdown from './components/SimpleMarkdown.js'
@@ -69,6 +69,16 @@ export default function App() {
   const [view, setView] = useState<View>(local ? 'personal' : 'chat')
   const [inboxCount, setInboxCount] = useState(0)
   const [tab, setTab] = useState<Tab>(() => local && maintenanceNotice() ? 'settings' : 'overview')
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const archiveRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!archiveOpen) return
+    const onPointer = (e: MouseEvent) => { if (!archiveRef.current?.contains(e.target as Node)) setArchiveOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setArchiveOpen(false) }
+    window.addEventListener('mousedown', onPointer)
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('mousedown', onPointer); window.removeEventListener('keydown', onKey) }
+  }, [archiveOpen])
   useEffect(() => {
     if (!local) return
     const reload = (event: StorageEvent) => {
@@ -185,7 +195,18 @@ export default function App() {
         </div>
         <nav className={styles.nav} aria-label={t('app.navigation', { defaultValue: 'Main navigation' })}>
           {local ? <>
-            {tabs.map(({ id, title }) => <button type="button" key={id} className={styles.navBtn} aria-current={view === 'personal' && tab === id ? 'page' : undefined} onClick={() => openPersonal(id)}>{title}{id === 'inbox' && inboxCount > 0 && ` · ${inboxCount}`}</button>)}
+            {tabs.filter(t => t.group === 'primary').map(({ id, title }) => <button type="button" key={id} className={styles.navBtn} aria-current={view === 'personal' && tab === id ? 'page' : undefined} onClick={() => { setArchiveOpen(false); openPersonal(id) }}>{title}{id === 'inbox' && inboxCount > 0 && ` · ${inboxCount}`}</button>)}
+            {(() => {
+              const archives = tabs.filter(t => t.group === 'archive')
+              const activeArchive = view === 'personal' ? archives.find(t => t.id === tab) : undefined
+              return <div ref={archiveRef} className={styles.navGroup}>
+                <button type="button" className={styles.navBtn} aria-expanded={archiveOpen} aria-current={activeArchive ? 'true' : undefined} onClick={() => setArchiveOpen(v => !v)}>{activeArchive ? `资料档案 · ${activeArchive.title}` : '资料档案'} ▾</button>
+                {archiveOpen && <div className={styles.navDropdown} role="menu">
+                  {archives.map(({ id, title }) => <button type="button" role="menuitem" key={id} className={styles.navBtn} aria-current={view === 'personal' && tab === id ? 'page' : undefined} onClick={() => { setArchiveOpen(false); openPersonal(id) }}>{title}</button>)}
+                </div>}
+              </div>
+            })()}
+            {tabs.filter(t => t.group === 'system').map(({ id, title }) => <button type="button" key={id} className={styles.navBtn} aria-current={view === 'personal' && tab === id ? 'page' : undefined} onClick={() => { setArchiveOpen(false); openPersonal(id) }}>{title}</button>)}
             {view === 'dashboard' && <button type="button" className={styles.navBtn} onClick={handleExport}>原版导出</button>}
           </> : <>
           <button

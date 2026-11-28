@@ -8,6 +8,10 @@
 .navBtn:not(:disabled):hover, .langBtn:hover, .authBtn:hover { background: var(--bm-subtle); }
 .navBtn[aria-current], .langBtnActive { background: var(--bm-tint); color: var(--bm-accent); font-weight: 750; }
 .navBtn:disabled { opacity: .5; cursor: default; }
+.navGroup { position: relative; }
+.navDropdown { position: absolute; right: 0; top: calc(100% + 6px); min-width: 160px; background: var(--bm-paper); border: 1px solid var(--bm-line); border-radius: 8px; box-shadow: var(--bm-shadow); padding: 6px; display: flex; flex-direction: column; gap: 3px; z-index: 40; }
+.navDropdown .navBtn { width: 100%; text-align: left; }
+@media (max-width: 640px) { .navDropdown { left: 0; right: auto; } }
 .langGroup, .authGroup { display: flex; gap: 3px; align-items: center; }
 .main { display: flex; justify-content: center; flex: 1; padding: 25px 24px 38px; min-width: 0; }
 @media (max-width: 640px) {

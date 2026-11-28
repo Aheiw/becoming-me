@@ -15,9 +15,18 @@ import LifeBook from './LifeBook.js'
 import { api, body, Empty, EvidenceList, Field, Page, type Data, type Evidence, type OpenComparison, type Tab, type Work } from './shared.js'
 import styles from './Personal.module.css'
 
-export const tabs: { id: Tab; title: string }[] = [
-  { id: 'overview', title: '关于我' }, { id: 'book', title: '人生书' }, { id: 'chat', title: '长期对话' }, { id: 'inbox', title: '收件箱' },
-  { id: 'events', title: '事件簿' }, { id: 'articles', title: '我的百科' }, { id: 'contexts', title: '人物与环境' }, { id: 'journal', title: '写日记' }, { id: 'library', title: '日记资料库' }, { id: 'dreams', title: '梦境簿' }, { id: 'settings', title: '设置' },
+export const tabs: { id: Tab; title: string; group: 'primary' | 'archive' | 'system' }[] = [
+  { id: 'overview', title: '关于我', group: 'primary' },
+  { id: 'book', title: '人生书', group: 'primary' },
+  { id: 'chat', title: '长期对话', group: 'primary' },
+  { id: 'journal', title: '写日记', group: 'primary' },
+  { id: 'inbox', title: '收件箱', group: 'primary' },
+  { id: 'articles', title: '我的百科', group: 'archive' },
+  { id: 'events', title: '事件簿', group: 'archive' },
+  { id: 'contexts', title: '人物与环境', group: 'archive' },
+  { id: 'library', title: '日记资料库', group: 'archive' },
+  { id: 'dreams', title: '梦境簿', group: 'archive' },
+  { id: 'settings', title: '设置', group: 'system' },
 ]
 type Search = { mode: 'keyword' | 'hybrid'; hits: { id: string; sourceId: string; title: string; kind: 'event' | 'article' | 'context' | 'analysis'; text: string; evidence: Evidence[] }[] }
 function ArchiveTools({ data, go, legacy, work, busy }: { data: Data; go: (tab: Tab, id?: string) => void; legacy: () => void; work: Work; busy: boolean }) {

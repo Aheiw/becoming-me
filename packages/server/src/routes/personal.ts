@@ -13,7 +13,7 @@ import { recallChat } from '../personal/chatRecall.js'
 import { aliasLength, aliasLimit, matchesContextName, nameKey, uniqueAliases } from '../personal/contextNames.js'
 import { diaryIntent, isPersonalDream, recallDiary } from '../personal/diaryRecall.js'
 import { localSettingsRoute } from './localSettings.js'
-import { applyProfileDrafts, profileContext } from '../personal/profile.js'
+import { applyProfileDrafts, profileContext, type ProfileTurnUpdate } from '../personal/profile.js'
 import { profileRoute } from './profile.js'
 import { trackLocalRequest } from '../personal/maintenance.js'
 import { diaryEntriesSchema } from '../llm/diarySchemas.js'
@@ -376,34 +376,37 @@ personalRoute.post('/chat', async c => {
           sources: [...diarySources].map(([id, { quote, date, label }]) => ({ id, quote, date, label })), extractEvents: intent.extractEvents,
         } }), inbox: state.proposals.slice(-12).map(p => ({ kind: p.kind, title: p.title, status: p.status })) }
         const captured = await captureTurn(message, answer.slice(0, 5000), captureContext, older, state.summary, AbortSignal.timeout(75_000))
-        const { count, profileChanged } = await changeState(db, userId, async (fresh, tx) => {
+        const { count, profileChanged, profileUpdates, correctedFocus } = await changeState(db, userId, async (fresh, tx) => {
           const [logged] = await tx.select({ at: rawLogs.createdAt }).from(rawLogs).where(and(eq(rawLogs.id, logId), eq(rawLogs.userId, userId)))
-          if (!logged) return { count: 0, profileChanged: 0 }
+          if (!logged) return { count: 0, profileChanged: 0, profileUpdates: [] as ProfileTurnUpdate[], correctedFocus: undefined as { title: string; correction: string } | undefined }
           const correction = captured.focusedCorrection?.trim()
           let revisionBase: Parameters<typeof addDrafts>[2]['revisionBase']
+          let correctedFocus: { title: string; correction: string } | undefined
           if (focus && correction && message.includes(correction) && fresh.focusId === focus.id) {
             const item = fresh.proposals.find(p => p.id === focus.id && (p.status === 'pending' || p.status === 'corrected'))
             if (item) {
               item.status = 'corrected'; item.correction = correction
+              correctedFocus = { title: item.title, correction }
               if (focusArticle && item.articleId === focusArticle.sourceId) revisionBase = {
                 id: item.articleId, version: articleVersion(focusArticle.at, state.revisions[item.articleId]), correction,
               }
             }
           }
           if (older.length && captured.summary.trim() && fresh.summaryThrough === state.summaryThrough) { fresh.summary = captured.summary; fresh.summaryThrough = through }
+          const profileUpdates: ProfileTurnUpdate[] = []
           const profileChanged = intent.extractEvents ? 0 : applyProfileDrafts(fresh, captured.profileUpdates.flatMap(d => {
             const quote = d.quote.trim()
             if (!quote || !message.includes(quote)) return []
             return [{ ...d, evidence: [{ kind: 'chat' as const, id: logId, quote, date: logged.at.toISOString().slice(0, 10) }] }]
-          }), { origin: 'chat', at: now(), visible: profile })
+          }), { origin: 'chat', at: now(), visible: profile }, profileUpdates)
           const count = addDrafts(fresh, captured.items, { origin: 'chat', logId, chatReplyId: assistantId, message, diarySources, chatSources, diaryOnly: Boolean(archive && intent.extractEvents), articles: (await readArticles(tx, userId, fresh)).filter(a => !a.deleted), revisionBase })
-          return { count, profileChanged }
+          return { count, profileChanged, profileUpdates, correctedFocus }
         })
         const notice = archive ? !archives.some(item => item.available) ? '没有可查询的日记原文。可在「分析日记」选文件后先保存到资料库。'
           : !diarySources.size ? '没有找到匹配的日记原文，可以换个时间或主题再试。'
           : '本轮查阅了 ' + diarySources.size + ' 段日记原文，未发送整批。' + (intent.extractEvents ? count ? ' 已生成 ' + count + ' 条待核对的事件草稿。' : ' 本轮没有新增可核对的事件草稿。' : '') : undefined
         const unavailable = withoutTools ? '当前 API 不支持模型自主检索。仍可输入「查对话原文：关键词」或说「查日记」，由成我先找相关原文。' : ''
-        await emit({ type: 'done', count, profileChanged, notice: [notice, explicitChat && !explicitChat.excerpts.length ? '没有找到匹配的长期对话原话，可以换个关键词再试。' : '', unavailable].filter(Boolean).join(' ') || undefined })
+        await emit({ type: 'done', count, profileChanged, ...(profileUpdates.length && { profileUpdates }), ...(correctedFocus && { correctedFocus }), notice: [notice, explicitChat && !explicitChat.excerpts.length ? '没有找到匹配的长期对话原话，可以换个关键词再试。' : '', unavailable].filter(Boolean).join(' ') || undefined })
       } catch { await emit({ type: 'done', warning: '回复已保存。这条消息未能完成自动整理，收件箱和画像没有更新。' }) }
     } catch {
       if (!controller.signal.aborted) await emit({ type: 'error', error: saved ? '回复已保存。' : '这次回复未完成，未写入对话。请重试。' })

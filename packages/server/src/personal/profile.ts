@@ -28,9 +28,9 @@ export function profileContext(state: PersonalState, focused?: string, query = '
   }))
 }
 
-export function applyProfileDrafts(state: PersonalState, drafts: ProfileDraft[], options: {
-  origin: 'chat' | 'diary'; at: string; visible: ReturnType<typeof profileContext>;
-}) {
+export type ProfileTurnUpdate = { id: string; title: string; status: 'self' | 'observation' | 'withdrawn'; observation: string; limits: string; reason: string }
+
+export function applyProfileDrafts(state: PersonalState, drafts: ProfileDraft[], options: { origin: 'chat' | 'diary'; at: string; visible: ReturnType<typeof profileContext> }, changedOut?: ProfileTurnUpdate[]) {
   let changed = 0
   const prior = new Map(options.visible.map(f => [f.id, f.updatedAt]))
   for (const d of drafts) {
@@ -67,6 +67,7 @@ export function applyProfileDrafts(state: PersonalState, drafts: ProfileDraft[],
       p.title = finding.title; p.basis = finding.observation; p.counterpoint = finding.limits; p.evidence = finding.evidence
       p.content = finding.question || '你怎么看这条理解？有没有还需要补充或改正的地方？'
     }
+    changedOut?.push({ id: finding.id, title: finding.title, status: finding.status ?? 'observation', observation: finding.observation, limits: finding.limits, reason: finding.revisionReason ?? reason })
     changed++
   }
   return changed

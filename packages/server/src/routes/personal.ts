@@ -136,7 +136,7 @@ personalRoute.get('/', async c => {
   const db = c.get('db'), userId = c.get('userId')
   const state = await importHistoricalAnalysis(db, userId)
   const articles = await readArticles(db, userId, state)
-  return c.json({ contexts: state.contexts ?? [], contextSuggestions: state.contextSuggestions ?? [], events: state.events, proposals: state.proposals, profileReport: state.profileReport ?? null, articles, chapters: state.chapters ?? [], turningPoints: state.turningPoints ?? {}, dreams: (state.dreams ?? []).map(({ id, title, date, updatedAt }) => ({ id, title, date, updatedAt })), focusId: state.focusId, diaryFocusId: state.diaryFocusId, dreamFocusId: state.dreamFocusId, comparisonFocus: state.comparisonFocus })
+  return c.json({ contexts: state.contexts ?? [], contextSuggestions: state.contextSuggestions ?? [], experiments: state.experiments ?? [], events: state.events, proposals: state.proposals, profileReport: state.profileReport ?? null, articles, chapters: state.chapters ?? [], turningPoints: state.turningPoints ?? {}, dreams: (state.dreams ?? []).map(({ id, title, date, updatedAt }) => ({ id, title, date, updatedAt })), focusId: state.focusId, diaryFocusId: state.diaryFocusId, dreamFocusId: state.dreamFocusId, comparisonFocus: state.comparisonFocus })
 })
 personalRoute.get('/chat', async c => {
   const db = c.get('db'), userId = c.get('userId')
@@ -299,9 +299,11 @@ personalRoute.post('/chat', async c => {
       const adjacent = docs.filter(d => (comparedArticle && d.kind === 'event' && adjacentIds.has(d.sourceId)) || (comparedEvent && d.kind === 'article' && d.relatedEventIds?.includes(comparedEvent.sourceId))).slice(0, 3)
       const matches = [...new Map([...primaryDocs, ...sliceDocs, ...adjacent, ...linked].map(d => [d.id, d])).values()].slice(0, 10)
       const correctionHistory = isolated ? [] : correctionsForModel(state, message)
+      const experimentsContext = isolated ? [] : (state.experiments ?? []).slice(0, 6).map(e => ({ id: e.id, title: e.title, hypothesis: e.hypothesis, action: e.action, reviewDate: e.reviewDate, status: e.status, outcome: e.outcome, reflection: e.reflection }))
       const context = { mode, ...(explicitChat && { chatArchive: { sources: explicitChat.excerpts } }), summary: isolated ? undefined : state.summary, comparison: comparisonView, ...(offerDream && { dreamDraft: true }), ...(explicitDiary && { diaryArchive: {
         sources: explicitDiary.excerpts, available: explicitDiary.available, extractEvents: intent.extractEvents,
       } }), ...(dream && { dream: { ...dream, notes: dream.notes.slice(-1) }, dreamNotice: '这是用户本次明确选入的梦境，只做联想，不作为现实或人格证据。' }), focus: focus && proposalForModel(allowDiary && !intent.optedOut ? focus : { ...focus, evidence: focus.evidence.filter(e => e.kind !== 'diary') }), profile, profileDiscussion: Boolean(profileFocus), diaryAnalysis: diary.map(proposalForModel),
+        ...(experimentsContext.length && { experiments: experimentsContext }),
         memories: matches.map(docForModel), correctionHistory }
       // Read-only access to the active user's archive with a bounded per-turn budget.
       let remainingLookups = 3
@@ -857,6 +859,57 @@ personalRoute.post('/dreams/:id/analyze', async c => {
     dream.notes.push({ at: now(), text })
     return dream
   }))
+})
+const experimentCreate = z.object({
+  title: text(160),
+  hypothesis: text(1000),
+  action: optionalText(1000),
+  reviewDate: approximateDate,
+  articleId: key.optional(),
+})
+const experimentPatch = z.object({
+  status: z.enum(['active', 'validated', 'refuted', 'inconclusive']).optional(),
+  outcome: optionalText(2000).optional(),
+  reflection: optionalText(2000).optional(),
+  title: text(160).optional(),
+  hypothesis: text(1000).optional(),
+  action: optionalText(1000).optional(),
+  reviewDate: approximateDate.optional(),
+})
+personalRoute.post('/experiments', async c => {
+  const input = await parse(c.req, experimentCreate)
+  const db = c.get('db'), userId = c.get('userId')
+  const created = await changeState(db, userId, async (state, tx) => {
+    if (input.articleId) {
+      const last = (await articleHistory(tx, userId, state, input.articleId)).at(-1)
+      if (!last || last.action === 'delete') throw new WorkspaceError('找不到关联的百科条目。', 404)
+    }
+    const stamp = now()
+    const exp = { id: randomUUID(), ...input, status: 'active' as const, outcome: '', reflection: '', createdAt: stamp, updatedAt: stamp }
+    ;(state.experiments ??= []).unshift(exp)
+    return exp
+  })
+  return c.json(created, 201)
+})
+personalRoute.patch('/experiments/:id', async c => {
+  const input = await parse(c.req, experimentPatch), id = c.req.param('id')
+  const updated = await changeState(c.get('db'), c.get('userId'), state => {
+    const exp = state.experiments?.find(e => e.id === id)
+    if (!exp) throw new WorkspaceError('找不到这个小实验。', 404)
+    Object.assign(exp, input, { updatedAt: now() })
+    return exp
+  })
+  return c.json(updated)
+})
+personalRoute.delete('/experiments/:id', async c => {
+  const id = c.req.param('id')
+  await changeState(c.get('db'), c.get('userId'), state => {
+    const list = state.experiments ?? []
+    const index = list.findIndex(e => e.id === id)
+    if (index < 0) throw new WorkspaceError('找不到这个小实验。', 404)
+    list.splice(index, 1)
+  })
+  return c.json({ ok: true })
 })
 personalRoute.get('/book.zip', async c => {
   const db = c.get('db'), userId = c.get('userId'), dreamsOnly = c.req.query('volume') === 'dreams'

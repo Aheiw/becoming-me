@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import SimpleMarkdown from '../SimpleMarkdown.js'
 import { interviewHistoryRequest, type InterviewDiaryDetails, type InterviewHistory } from '../../lib/interviewHistory.js'
-import { api, body, Empty, EvidenceList, Page, stamp, type Data, type Evidence, type Work } from './shared.js'
+import { api, body, day, Empty, EvidenceList, Page, stamp, type Data, type Evidence, type Work } from './shared.js'
 import { ProposalCard } from './Inbox.js'
 import { DreamForm } from './Dreams.js'
+import { ExperimentForm, ExperimentList } from './Experiments.js'
 import styles from './Personal.module.css'
 
 type ChatMode = 'chat' | 'event' | 'dream'
@@ -86,7 +87,7 @@ function ChatDreamCard({ replyId, original, work }: { replyId: string; original:
   </aside>
 }
 
-export default function LongChat({ allowDiary, setAllowDiary, hidden, data, work, changed, openDiary, openEvent, openArticle, openProfile }: { allowDiary: boolean; setAllowDiary: (value: boolean) => void; hidden: boolean; data?: Data; work: Work; changed: () => Promise<unknown>; openDiary: () => void; openEvent: (id: string) => void; openArticle: (id: string) => void; openProfile: () => void }) {
+export default function LongChat({ allowDiary, setAllowDiary, hidden, data, work, changed, draftPrompt, openDiary, openEvent, openArticle, openProfile }: { allowDiary: boolean; setAllowDiary: (value: boolean) => void; hidden: boolean; data?: Data; work: Work; changed: () => Promise<unknown>; draftPrompt?: { key: number; text: string }; openDiary: () => void; openEvent: (id: string) => void; openArticle: (id: string) => void; openProfile: () => void }) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [modeChoice, setModeChoice] = useState<{ dreamId?: string; mode: ChatMode }>()
@@ -96,6 +97,8 @@ export default function LongChat({ allowDiary, setAllowDiary, hidden, data, work
   const [error, setError] = useState('')
   const [turnFeedback, setTurnFeedback] = useState<Record<string, TurnFeedback>>({})
   const [skippedLeads, setSkippedLeads] = useState<string[]>([])
+  const [showExpForm, setShowExpForm] = useState(false)
+  useEffect(() => { if (draftPrompt?.text) setInput(draftPrompt.text) }, [draftPrompt?.key])
   const bottom = useRef<HTMLDivElement>(null)
   const pendingRef = useRef(false)
   const current = useRef('')
@@ -277,6 +280,14 @@ export default function LongChat({ allowDiary, setAllowDiary, hidden, data, work
       </div>
       <div className={styles.actions}><button className={styles.primary} disabled={pending || !loaded || !input.trim()}>发送</button><small>发送会把本轮对话和选中的少量相关资料交给已配置的聊天 API。</small></div>
     </form>
+    {data && <details className={styles.details} open={(data.experiments ?? []).some(e => e.status === 'active' && Boolean(e.reviewDate) && e.reviewDate <= day()) || undefined}><summary>自我验证小实验 · {(data.experiments ?? []).filter(e => e.status === 'active').length} 个进行中</summary>
+      <div className={styles.stack}>
+        <div className={styles.actions}><button type="button" onClick={() => setShowExpForm(v => !v)}>{showExpForm ? '收起新建表单' : '记一个低成本验证小实验'}</button></div>
+        {showExpForm && <ExperimentForm data={data} work={work} close={() => setShowExpForm(false)} />}
+        <ExperimentList experiments={data.experiments ?? []} articles={data.articles} work={work} busy={pending} openArticle={openArticle} onDiscuss={exp => setInput(`我想回访一下之前的小实验「${exp.title}」（想验证：${exp.hypothesis}）。${exp.outcome ? `实际结果是：${exp.outcome}` : '最近我的观察是：'}`)} />
+        {!(data.experiments?.length) && !showExpForm && <p className={styles.muted}>对某个自我判断拿不准时，可以记一个现实里的小验证，之后带回对话里复盘。</p>}
+      </div>
+    </details>}
     <Archive useDiary={diaryId => work(() => api('/focus', body({ diaryId })), '已带入这批历史分析，不会重新发送全部原文。')} />
   </Page></div>
 }

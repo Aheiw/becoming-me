@@ -22,6 +22,11 @@ export type LifeContext = {
   id: string; kind: 'person' | 'environment'; name: string; aliases?: string[]; role: string; period: string; description: string; impact: string;
   eventIds: string[]; links: ContextLink[]; evidence?: Evidence[]; updatedAt: string
 }
+export type ExperimentStatus = 'active' | 'validated' | 'refuted' | 'inconclusive'
+export type Experiment = {
+  id: string; title: string; hypothesis: string; action: string; reviewDate: string; articleId?: string
+  status: ExperimentStatus; outcome: string; reflection: string; createdAt: string; updatedAt: string
+}
 export type Article = {
   title: string; category: string; chapter?: ArticleChapterId; fact: string; limits?: string; eventIds: string[]; evidence: Evidence[]
 }
@@ -38,6 +43,7 @@ export type PersonalState = {
   events: LifeEvent[]; proposals: Proposal[]; revisions: Record<string, Revision[]>;
   diaryJobs?: Record<string, Record<string, DiaryAnalysisItem[]>>;
   diarySeen: string[]; summary: string; summaryThrough: number; focusId?: string; diaryFocusId?: string; comparisonFocus?: ComparisonFocus; chatEvidence?: Record<string, Evidence[]>;
+  experiments?: Experiment[];
   chapters?: Chapter[]; turningPoints?: Record<string, TurningPoint[]>; dreams?: Dream[]; dreamFocusId?: string; privateTurns?: string[]; dreamTurns?: Record<string, string>; dreamDrafts?: Record<string, { userId: string }>;
 }
 export const emptyPersonalState = (): PersonalState => ({ events: [], proposals: [], revisions: {}, diarySeen: [], summary: '', summaryThrough: 0 })

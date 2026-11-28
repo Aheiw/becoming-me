@@ -34,6 +34,8 @@ function ArchiveTools({ data, go, legacy, work, busy }: { data: Data; go: (tab: 
 export default function PersonalWorkspace({ tab, active, setTab, legacy, onInboxCount }: { tab: Tab; active: boolean; setTab: (tab: Tab) => void; legacy: () => void; onInboxCount: (count: number) => void }) {
   const [data, setData] = useState<Data>(), [error, setError] = useState(''), [status, setStatus] = useState(''), [pending, setPending] = useState(0)
   const [targets, setTargets] = useState<Partial<Record<Tab, string>>>({})
+  const [chatDraft, setChatDraft] = useState<{ key: number; text: string }>()
+  const discussJournal = (text: string) => { setChatDraft({ key: Date.now(), text }); setTab('chat') }
   const [allowDiary, setDiaryPreference] = useState(() => {
     try { return (localStorage.getItem('becoming-me:diary-recall') ?? (mobileClient ? 'off' : 'on')) === 'on' } catch { return !mobileClient }
   })
@@ -77,9 +79,9 @@ export default function PersonalWorkspace({ tab, active, setTab, legacy, onInbox
         </section>
       </Page>
       : <Settings allowDiary={allowDiary} setAllowDiary={setAllowDiary} openDiaryLibrary={() => go('library')} />)}
-    <div hidden={!active || tab !== 'journal'}><JournalWrite analysis={journalAnalysis} onSaved={() => setJournalVersion(v => v + 1)} openLibrary={() => go('library')} openInbox={() => go('inbox')} /></div>
+    <div hidden={!active || tab !== 'journal'}><JournalWrite analysis={journalAnalysis} onSaved={() => setJournalVersion(v => v + 1)} openLibrary={() => go('library')} openInbox={() => go('inbox')} discussJournal={discussJournal} /></div>
     {active && tab === 'library' && <DiaryLibrary openChat={() => { void refresh(); go('chat') }} onSaved={() => setJournalVersion(v => v + 1)} openWrite={() => go('journal')} openInbox={() => go('inbox')} analysis={journalAnalysis} version={journalVersion} />}
-    <LongChat allowDiary={allowDiary} setAllowDiary={setAllowDiary} hidden={tab !== 'chat' || !active} data={data} work={work} changed={refresh} openDiary={() => go('library')} openEvent={id => go('events', id)} openArticle={id => go('articles', id)} openProfile={() => go('overview')} />
+    <LongChat allowDiary={allowDiary} setAllowDiary={setAllowDiary} hidden={tab !== 'chat' || !active} data={data} work={work} changed={refresh} draftPrompt={chatDraft} openDiary={() => go('library')} openEvent={id => go('events', id)} openArticle={id => go('articles', id)} openProfile={() => go('overview')} />
     {data && <>
       {tab === 'overview' && <Profile report={data.profileReport} go={go} work={work} busy={pending > 0} />}
       <div hidden={tab !== 'book'}><LifeBook data={data} target={targets.book} open={id => go('book', id)} openEvent={id => go('events', id)} openArticle={id => go('articles', id)} openContext={id => go('contexts', id)} discuss={discuss} busy={pending > 0} />{tab === 'book' && <ArchiveTools data={data} go={go} work={work} busy={pending > 0} legacy={legacy} />}</div>

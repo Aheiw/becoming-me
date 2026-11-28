@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { articleChapters, chapterFor, type ArticleChapterId } from '../../../../server/src/personal/articleTopics.js'
 import ArticleMerge from './ArticleMerge.js'
+import { ExperimentForm, ExperimentList } from './Experiments.js'
 import type { Revision } from '../../../../server/src/personal/types.js'
 import { api, body, categories, categoryName, day, Empty, EvidenceList, EventLinks, Field, Page, stamp, type Article, type Data, type OpenComparison, type Work } from './shared.js'
 import Perspectives from './Perspectives.js'
@@ -80,7 +81,7 @@ export default function Articles({ data, target, open, openEvent, work, busy, op
     }} /></div> : a ? <article className={styles.card} key={a.id}><p className={styles.kicker}>{chapterFor(a).name}{a.deleted && ' · 回收站'}</p><h2>{a.title}</h2>
       <h3>已确认的认识</h3><p className={styles.preserve}>{a.fact}</p>{a.limits && <section className={styles.segment}><h3>适用条件、反例与保留疑问</h3><p className={styles.preserve}>{a.limits}</p></section>}<EvidenceList evidence={a.evidence} /><EventLinks ids={a.eventIds} events={data.events} open={openEvent} />
       <div className={styles.actions}>
-        {!a.deleted && <><button type="button" onClick={() => setEditor(`edit-${a.id}`)}>编辑</button><button type="button" onClick={() => setEditor(`point-${a.id}`)}>记一次观点变化</button><button type="button" onClick={async () => { if (confirm('移入回收站？仍可查看并恢复旧版。') && await work(() => api(`/articles/${a.id}`, { method: 'DELETE' }), '已移入回收站。')) setRecycle(true) }}>移入回收站</button></>}
+        {!a.deleted && <><button type="button" onClick={() => setEditor(`edit-${a.id}`)}>编辑</button><button type="button" onClick={() => setEditor(`point-${a.id}`)}>记一次观点变化</button><button type="button" onClick={() => setEditor(`exp-${a.id}`)}>设一个验证小实验</button><button type="button" onClick={async () => { if (confirm('移入回收站？仍可查看并恢复旧版。') && await work(() => api(`/articles/${a.id}`, { method: 'DELETE' }), '已移入回收站。')) setRecycle(true) }}>移入回收站</button></>}
         <button type="button" onClick={() => setEditor(editor === `history-${a.id}` ? '' : `history-${a.id}`)}>修订历史与恢复</button>
       </div>
       {linked.length > 0 && <section className={styles.segment}><h3>仍在核对的推测与纠正</h3>{questionList(linked)}</section>}
@@ -88,6 +89,8 @@ export default function Articles({ data, target, open, openEvent, work, busy, op
       {editor === `history-${a.id}` && <History id={a.id} updatedAt={a.updatedAt} work={work} data={data} openEvent={openEvent} />}
       {points && points.length > 0 && <section className={styles.segment}><h3>观点演变史</h3>{points.map(p => <div className={styles.compare} key={p.id}><p className={styles.kicker}>{p.date || '日期未知'}</p><p className={styles.preserve}><strong>原来：</strong>{p.before}</p><p className={styles.preserve}><strong>后来：</strong>{p.after}</p><p className={styles.preserve}><strong>为什么变了：</strong>{p.why}</p><EventLinks ids={p.eventId ? [p.eventId] : []} events={data.events} open={openEvent} /></div>)}</section>}
       {editor === `point-${a.id}` && <TurningForm id={a.id} work={work} data={data} close={() => setEditor('')} />}
+      {editor === `exp-${a.id}` && <section className={styles.segment}><h3>为这条认识设一个小实验</h3><ExperimentForm data={data} initialArticleId={a.id} initialHypothesis={a.limits || a.fact.slice(0, 120)} work={work} close={() => setEditor('')} /></section>}
+      {(data.experiments?.some(e => e.articleId === a.id)) && <section className={styles.segment}><h3>关联的验证小实验</h3><ExperimentList experiments={data.experiments.filter(e => e.articleId === a.id)} articles={data.articles} work={work} busy={busy} /></section>}
       {!a.deleted && <section className={styles.segment}><h3>请 AI 提出修订</h3><p className={styles.muted}>选择参考事件；AI 结合相关旧资料提出草稿，你确认前不会改动条目。</p><EventPicker key={a.id} events={data.events} picked={reviewIds} change={setReviewIds} />
         <div className={styles.actions}><button type="button" disabled={busy || !reviewIds.length} onClick={async () => { const r = await work(() => api<{ count: number }>('/review', body({ articleId: a.id, eventIds: reviewIds })), 'AI 修订分析已完成。'); if (r) setResult(r.count) }}>生成修订草稿</button>{result !== undefined && <button type="button" onClick={openInbox}>查看收件箱（新增 {result} 条）</button>}</div></section>}
       </article> : <Empty>选一个主题，查看已有认识和依据。</Empty>}</div>

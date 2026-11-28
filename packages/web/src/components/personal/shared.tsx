@@ -1,16 +1,16 @@
 import { requirePairing } from '../../lib/mobileAccess.js'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import type { Article, Chapter, ComparisonFocus, ContextSuggestion, Dream, EventImportance, Evidence, LifeContext, LifeEvent, Proposal, TurningPoint } from '../../../../server/src/personal/types.js'
+import type { Article, Chapter, ComparisonFocus, ContextSuggestion, Dream, EventImportance, Evidence, Experiment, ExperimentStatus, LifeContext, LifeEvent, Proposal, TurningPoint } from '../../../../server/src/personal/types.js'
 import type { ProfileReport } from '../../../../server/src/personal/profileTypes.js'
 import { diaryCategoryLabels } from '../DiaryEvidence.js'
 import { findQuoteRange } from '../../lib/quoteMatch.js'
 import styles from './Personal.module.css'
 
-export type { Article, Chapter, ComparisonFocus, ContextSuggestion, Dream, EventImportance, Evidence, LifeContext, LifeEvent, Proposal, TurningPoint }
+export type { Article, Chapter, ComparisonFocus, ContextSuggestion, Dream, EventImportance, Evidence, Experiment, ExperimentStatus, LifeContext, LifeEvent, Proposal, TurningPoint }
 export type ArticleRow = Article & { id: string; deleted: boolean; updatedAt: string; version?: string }
 export type DreamRow = Pick<Dream, 'id' | 'title' | 'date' | 'updatedAt'>
 export type Data = {
-  contexts: LifeContext[]; contextSuggestions: ContextSuggestion[]
+  contexts: LifeContext[]; contextSuggestions: ContextSuggestion[]; experiments?: Experiment[]
   events: LifeEvent[]; chapters: Chapter[]; articles: ArticleRow[]; proposals: Proposal[]; dreams: DreamRow[]; turningPoints: Record<string, TurningPoint[]>;
   profileReport: ProfileReport | null
   focusId?: string; diaryFocusId?: string; dreamFocusId?: string; comparisonFocus?: ComparisonFocus

@@ -1,17 +1,18 @@
 import { eq, inArray, and, like, notLike } from 'drizzle-orm'
 import { personalVectors } from '../db/schema.js'
 import type { Db } from '../types.js'
+import { indexEventContexts } from './contextEvents.js'
 import { hash, readArticles } from './store.js'
 import type { Evidence, PersonalState } from './types.js'
 
-const MODEL = 'bge-m3:latest'
+export const EMBEDDING_MODEL = 'bge-m3:latest'
 const OLLAMA = 'http://127.0.0.1:11434'
-export type MemoryDoc = { id: string; kind: 'event' | 'article' | 'analysis' | 'diary-text'; sourceId: string; title: string; text: string; at: string; evidence: Evidence[]; relatedEventIds?: string[] }
+export type MemoryDoc = { id: string; kind: 'event' | 'article' | 'context' | 'analysis' | 'diary-text' | 'chat-text'; sourceId: string; title: string; text: string; at: string; evidence: Evidence[]; relatedEventIds?: string[]; articleCategory?: string; articleChapter?: import('./articleTopics.js').ArticleChapterId; limits?: string }
 
 export async function localEmbeddings(input: string[], signal: AbortSignal) {
   const response = await fetch(`${OLLAMA}/api/embed`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, redirect: 'error', signal,
-    body: JSON.stringify({ model: MODEL, input, truncate: true }),
+    body: JSON.stringify({ model: EMBEDDING_MODEL, input, truncate: true }),
   })
   if (!response.ok) throw new Error('本地向量模型不可用')
   const { embeddings } = await response.json() as { embeddings?: number[][] }
@@ -37,18 +38,32 @@ export function cosine(a: number[], b: number[]) {
 }
 export async function memoryDocs(db: Db, userId: string, state: PersonalState): Promise<MemoryDoc[]> {
   const articles = await readArticles(db, userId, state)
+  const eventContexts = indexEventContexts(state.contexts ?? [])
+  const eventsByContext = new Map<string, string[]>()
+  for (const [eventId, cards] of eventContexts) for (const cardId of cards.keys()) {
+    const list = eventsByContext.get(cardId) ?? []
+    list.push(eventId)
+    eventsByContext.set(cardId, list)
+  }
+  const eventById = new Map(state.events.map(e => [e.id, e]))
+  const relatedNames = (id: string) => [...(eventContexts.get(id)?.values() ?? [])].map(({ card, direct }) =>
+    `${card.kind === 'person' ? '人物' : '环境'}：${card.name}${card.aliases?.length ? `（别名：${card.aliases.join('、')}）` : ''}${direct ? '' : '（来自关系）'}`).join('；')
   return [
     ...state.events.map(e => ({ id: `事件-${e.id}`, kind: 'event' as const, sourceId: e.id, title: e.title,
-      text: [e.date && `时间：${e.date}`, e.dateNote, e.topics?.length && `主题：${e.topics.join('、')}`, e.cause && `起因：${e.cause}`, `经过：${e.facts}`, e.outcome && `结果：${e.outcome}`, e.outlook && `当时的自述：${e.outlook}`, e.prediction && `当时的预期：${e.prediction}`, e.impact && `用户记下的影响：${e.impact}`, ...e.followups?.slice(-3).map(f => `回访 ${f.date}：${f.outcome}；事后看法：${f.reflection}`) ?? [], e.analysis && `解释（待核对）：${e.analysis}`].filter(Boolean).join('\n'), at: e.updatedAt, evidence: e.evidence })),
+      text: [e.date && `时间：${e.date}`, e.dateNote, relatedNames(e.id), e.topics?.length && `主题：${e.topics.join('、')}`, e.cause && `起因：${e.cause}`, `经过：${e.facts}`, e.outcome && `结果：${e.outcome}`, e.outlook && `当时的自述：${e.outlook}`, e.prediction && `当时的预期：${e.prediction}`, e.impact && `用户记下的影响：${e.impact}`, ...e.followups?.slice(-3).map(f => `回访 ${f.date}：${f.outcome}；事后看法：${f.reflection}`) ?? [], e.analysis && `解释（待核对）：${e.analysis}`].filter(Boolean).join('\n'), at: e.updatedAt, evidence: e.evidence })),
+    ...(state.contexts ?? []).map(c => ({ id: `背景-${c.id}`, kind: 'context' as const, sourceId: c.id, title: c.name,
+      text: [`${c.kind === 'person' ? '人物' : '环境'}：${c.role}`, `时段：${c.period}`, c.aliases?.length && `别名：${c.aliases.join('、')}`, c.description, c.impact && `用户自述的影响：${c.impact}`,
+        c.links.map(l => `${l.label} · ${state.contexts?.find(p => p.id === l.targetId)?.name ?? ''}`).join('；')].filter(Boolean).join('\n'),
+      at: c.updatedAt, relatedEventIds: eventsByContext.get(c.id) ?? [], evidence: [...(c.evidence ?? []), ...c.links.flatMap(l => l.evidence ?? []), ...(eventsByContext.get(c.id) ?? []).flatMap(id => eventById.get(id)?.evidence.slice(0, 2) ?? [])].slice(0, 6) })),
     ...articles.filter(a => !a.deleted).map(a => ({ id: `百科-${a.id}`, kind: 'article' as const, sourceId: a.id,
-      title: a.title, text: a.fact, at: a.updatedAt, evidence: a.evidence, relatedEventIds: a.eventIds })),
+      title: a.title, text: a.fact, articleCategory: a.category, articleChapter: a.chapter, limits: a.limits, at: a.updatedAt, evidence: a.evidence, relatedEventIds: a.eventIds })),
     ...state.proposals.filter(p => p.origin === 'diary' && p.status === 'pending').map(p => ({ id: `日记分析-${p.id}`, kind: 'analysis' as const,
       sourceId: p.id, title: p.title, text: `日记分析草稿（非事实）：${p.content}\n依据：${p.basis}`, at: p.createdAt, evidence: p.evidence })),
   ].sort((a, b) => b.at.localeCompare(a.at))
 }
 
-export async function searchMemory(db: Db, userId: string, docs: MemoryDoc[], question: string, signal?: AbortSignal, scope: 'memory' | 'diary' = 'memory') {
-  const minLexical = scope === 'diary' ? 0.12 : Number.EPSILON
+export async function searchMemory(db: Db, userId: string, docs: MemoryDoc[], question: string, signal?: AbortSignal, scope: 'memory' | 'diary' | 'chat' = 'memory', completeIndex = false) {
+  const minLexical = scope === 'memory' ? Number.EPSILON : 0.12
   const prepared = docs.map(doc => ({ doc, text: searchable(doc) })).map(item => ({ ...item, lexical: keywordScore(question, item.text) }))
   const select = (ranked: MemoryDoc[]) => {
     const seen = new Set<string>()
@@ -59,17 +74,19 @@ export async function searchMemory(db: Db, userId: string, docs: MemoryDoc[], qu
     }).slice(0, 7)
   }
   const fallback = () => ({ mode: 'keyword' as const, hits: select(prepared.filter(x => x.lexical >= minLexical).sort((a, b) => b.lexical - a.lexical).map(x => x.doc)) })
-  if (!prepared.length || process.env.PCE_EMBEDDINGS === '0') return fallback()
+  if (!prepared.length || process.env.BECOMING_ME_EMBEDDINGS === '0') return fallback()
   try {
     const limit = AbortSignal.timeout(12_000)
     const combined = signal ? AbortSignal.any([signal, limit]) : limit
-    const byScope = (scope === 'diary' ? like : notLike)(personalVectors.documentId, '日记原文-%')
+    const byScope = scope === 'diary' ? like(personalVectors.documentId, '日记原文-%')
+      : scope === 'chat' ? like(personalVectors.documentId, '对话原文-%')
+      : and(notLike(personalVectors.documentId, '日记原文-%'), notLike(personalVectors.documentId, '对话原文-%'))
     const cached = await db.select().from(personalVectors).where(and(eq(personalVectors.userId, userId), byScope))
     const vectors = new Map(cached.map(item => [item.documentId, item]))
     const identities = new Set(prepared.map(item => item.doc.id))
-    const orphans = scope === 'diary' ? [] : [...vectors.keys()].filter(id => !identities.has(id))
+    const orphans = !completeIndex || scope !== 'memory' ? [] : [...vectors.keys()].filter(id => !identities.has(id))
     if (orphans.length) await db.delete(personalVectors).where(and(eq(personalVectors.userId, userId), inArray(personalVectors.documentId, orphans)))
-    const items = prepared.map(p => ({ ...p, signature: hash([MODEL, p.text]) }))
+    const items = prepared.map(p => ({ ...p, signature: hash([EMBEDDING_MODEL, p.text]) }))
     // Warm a few relevant/new documents on each search instead of mass-indexing the diary archive.
     const missing = items.filter(x => vectors.get(x.doc.id)?.signature !== x.signature).sort((a, b) => b.lexical - a.lexical).slice(0, 8)
     const [queryVector, ...newVectors] = await localEmbeddings([question.slice(0, 1800), ...missing.map(x => x.text)], combined)
@@ -81,7 +98,7 @@ export async function searchMemory(db: Db, userId: string, docs: MemoryDoc[], qu
     const hits = items.flatMap(p => {
       const row = vectors.get(p.doc.id)
       const semantic = row?.signature === p.signature ? cosine(queryVector, row.embedding) : 0
-      return semantic >= (scope === 'diary' ? 0.46 : 0.44) || p.lexical >= minLexical ? [{ doc: p.doc, score: 0.8 * Math.max(semantic, 0) + 0.55 * p.lexical }] : []
+      return semantic >= (scope === 'memory' ? 0.44 : 0.46) || p.lexical >= minLexical ? [{ doc: p.doc, score: 0.8 * Math.max(semantic, 0) + 0.55 * p.lexical }] : []
     }).sort((a, b) => b.score - a.score).map(p => p.doc)
     return { mode: 'hybrid' as const, hits: select(hits) }
   } catch (error) {

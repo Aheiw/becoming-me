@@ -76,6 +76,6 @@ progressRoute.get('/', async (c) => {
     })
   } catch (err) {
     console.error(err)
-    return c.json({ error: process.env.PCE_LOCAL === '1' ? '暂时无法读取访谈进度。' : 'Failed to fetch progress' }, 500)
+    return c.json({ error: process.env.BECOMING_ME_LOCAL === '1' ? '暂时无法读取访谈进度。' : 'Failed to fetch progress' }, 500)
   }
 })

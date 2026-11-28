@@ -1,9 +1,9 @@
 {
-  "name": "@personal-context/mcp",
+  "name": "@becoming-me/mcp",
   "version": "0.2.0",
   "type": "module",
   "bin": {
-    "personal-context-mcp": "dist/index.js"
+    "becoming-me-mcp": "dist/index.js"
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm",

@@ -89,10 +89,10 @@ export default function ContextDashboard({ onStartInterview, onAddDiaries }: Pro
             </div>
           ))}
         </nav>
-        <article className={styles.chapter} aria-labelledby="pce-topic-title">
+        <article className={styles.chapter} aria-labelledby="becoming-me-topic-title">
           <div className={styles.chapterHead}>
             <span className={styles.eyebrow}>{t('dashboard.topicNumber', { number: topic.slice(1).padStart(2, '0'), defaultValue: 'Topic {{number}}' })}</span>
-            <h2 id="pce-topic-title">{t(`dashboard.layers.${topic}`)}</h2>
+            <h2 id="becoming-me-topic-title">{t(`dashboard.layers.${topic}`)}</h2>
             {selectedLayer && <span className={styles.chapterMeta}>{t('progress.label')} · {Math.round(selectedLayer.percent)}%</span>}
           </div>
           {status === 'loading' && <p className={styles.empty} role="status">{t('dashboard.loading')}</p>}

@@ -64,7 +64,7 @@ const RESOURCE_MAP: Record<ResourceSlug, { key: keyof ExportFiles; description: 
 const CORE_LAYERS: ResourceSlug[] = ['life-chapters', 'values', 'character']
 
 const server = new McpServer({
-  name: 'personal_context',
+  name: 'becoming-me',
   version: '0.1.0',
 })
 

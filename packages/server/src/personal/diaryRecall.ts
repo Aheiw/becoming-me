@@ -10,7 +10,7 @@ export function diaryIntent(message: string, selected: boolean) {
   const extractEvents = /事件|经历|转折/u.test(message) && /记录|提取|整理|找|列|归档|写入|收集|总结|捋/u.test(message)
   const optedOut = /(?:别|不要|不用|无需)(?:再|去|用)?(?:查|读|看|搜|参考|翻|引用)(?:我的|旧的|以前的)?日记/u.test(message)
   const referringToText = /查|读|看|检索|翻|搜|根据|结合|参考|原文|原话|提到|写[过了的]|日记[里中]|日记[内上]|日记.*(?:记|有)/u.test(message)
-  return { lookup: !optedOut && ((mentioned && (referringToText || extractEvents)) || (selected && extractEvents)), extractEvents, all: /全部|所有|整个日记库/u.test(message) }
+  return { optedOut, lookup: !optedOut && ((mentioned && (referringToText || extractEvents)) || (selected && extractEvents)), extractEvents, all: /全部|所有|整个日记库/u.test(message) }
 }
 
 export async function recallDiary(db: Db, userId: string, message: string, opts: { batchId?: string; extractEvents: boolean; signal: AbortSignal }) {

@@ -1,3 +1,4 @@
+import { mobileClient, requirePairing } from './lib/mobileAccess.js'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Show, SignInButton, SignUpButton, UserButton } from '@clerk/react'
@@ -7,11 +8,12 @@ import Onboarding from './components/Onboarding.js'
 import ContextDashboard from './components/ContextDashboard.js'
 import PersonalWorkspace, { tabs } from './components/personal/PersonalWorkspace.js'
 import type { Tab } from './components/personal/shared.js'
-import DiaryAnalysis from './components/DiaryAnalysis.js'
+
 import { localProfile as local } from './lib/localProfile.js'
+import { clearLegacyChatCache, maintenanceNotice, recordsChangeKey } from './lib/localMaintenance.js'
 import styles from './App.module.css'
 
-type View = 'personal' | 'onboarding' | 'chat' | 'export' | 'dashboard' | 'diary'
+type View = 'personal' | 'onboarding' | 'chat' | 'export' | 'dashboard'
 
 interface ExportFiles {
   index: string
@@ -65,12 +67,33 @@ const EXPORT_ORDER: ExportItemDef[] = [
 export default function App() {
   const { t, i18n } = useTranslation()
   const [view, setView] = useState<View>(local ? 'personal' : 'chat')
-  const [tab, setTab] = useState<Tab>('overview')
-  const [refreshKey, setRefreshKey] = useState(0)
+  const [inboxCount, setInboxCount] = useState(0)
+  const [tab, setTab] = useState<Tab>(() => local && maintenanceNotice() ? 'settings' : 'overview')
+  useEffect(() => {
+    if (!local) return
+    const reload = (event: StorageEvent) => {
+      if (event.key !== recordsChangeKey) return
+      clearLegacyChatCache()
+      window.location.reload()
+    }
+    window.addEventListener('storage', reload)
+    return () => window.removeEventListener('storage', reload)
+  }, [])
+  useEffect(() => {
+    if (!mobileClient) return
+    const controller = new AbortController()
+    const check = () => {
+      if (document.visibilityState !== 'visible') return
+      void fetch('/mobile-connect/status', { cache: 'no-store', signal: controller.signal }).then(requirePairing).catch(() => {})
+    }
+    check()
+    document.addEventListener('visibilitychange', check)
+    const timer = window.setInterval(check, 30_000)
+    return () => { controller.abort(); document.removeEventListener('visibilitychange', check); window.clearInterval(timer) }
+  }, [])
   const openPersonal = (value: Tab) => { setTab(value); setView('personal') }
   const [onboardingDone, setOnboardingDone] = useState(false)
-  const [diaryOpened, setDiaryOpened] = useState(false)
-  const openDiary = () => { setDiaryOpened(true); setView('diary') }
+  const openDiary = () => openPersonal('library')
   const openInterview = () => local ? openPersonal('chat') : setView(onboardingDone ? 'chat' : 'onboarding')
   const [exportFiles, setExportFiles] = useState<ExportFiles | null>(null)
   const [exportLayers, setExportLayers] = useState<ExportLayer[]>([])
@@ -131,7 +154,7 @@ export default function App() {
     try {
       const a = document.createElement('a')
       a.href = url
-      a.download = 'personal_context.zip'
+      a.download = 'becoming-me.zip'
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -162,8 +185,7 @@ export default function App() {
         </div>
         <nav className={styles.nav} aria-label={t('app.navigation', { defaultValue: 'Main navigation' })}>
           {local ? <>
-            {tabs.map(({ id, title }) => <button type="button" key={id} className={styles.navBtn} aria-current={view === 'personal' && tab === id ? 'page' : undefined} onClick={() => openPersonal(id)}>{title}</button>)}
-            <button type="button" className={styles.navBtn} aria-current={view === 'diary' ? 'page' : undefined} onClick={openDiary}>分析日记</button>
+            {tabs.map(({ id, title }) => <button type="button" key={id} className={styles.navBtn} aria-current={view === 'personal' && tab === id ? 'page' : undefined} onClick={() => openPersonal(id)}>{title}{id === 'inbox' && inboxCount > 0 && ` · ${inboxCount}`}</button>)}
             {view === 'dashboard' && <button type="button" className={styles.navBtn} onClick={handleExport}>原版导出</button>}
           </> : <>
           <button
@@ -182,16 +204,6 @@ export default function App() {
           >
             {t('app.nav.interview')}
           </button>
-          {local && (
-            <button
-              type="button"
-              onClick={openDiary}
-              aria-current={view === 'diary' ? 'page' : undefined}
-            className={styles.navBtn}
-            >
-              {t('app.nav.diary')}
-            </button>
-          )}
           <button
             onClick={() => handleExport()}
             disabled={onboarding}
@@ -233,13 +245,10 @@ export default function App() {
       </header>
 
       <main className={styles.main}>
-        {local && <PersonalWorkspace tab={tab} setTab={setTab} active={view === 'personal'} openDiary={openDiary} legacy={() => setView('dashboard')} refreshKey={refreshKey} />}
+        {local && <PersonalWorkspace tab={tab} setTab={setTab} onInboxCount={setInboxCount} active={view === 'personal'} legacy={() => setView('dashboard')} />}
         {view === 'onboarding' && <Onboarding onComplete={() => { setOnboardingDone(true); setView('chat') }} />}
         {view === 'chat' && <Chat local={local} onAddDiaries={openDiary} />}
         {view === 'dashboard' && <ContextDashboard onStartInterview={openInterview} onAddDiaries={local ? openDiary : undefined} />}
-        {diaryOpened && (
-          <DiaryAnalysis hidden={view !== 'diary'} onViewInbox={() => openPersonal('inbox')} onViewInterview={openInterview} onAnalyzed={() => setRefreshKey(n => n + 1)} />
-        )}
         {view === 'export' && !exportFiles && <div className={styles.exportContainer}><p role={exportError ? 'alert' : 'status'}>{exportError || t('dashboard.loading')}</p>{exportError && <button className={styles.downloadBtn} onClick={handleExport}>{t('dashboard.retry', { defaultValue: 'Retry' })}</button>}</div>}
         {view === 'export' && exportFiles && (
           <div className={styles.exportContainer}>

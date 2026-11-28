@@ -4,6 +4,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { interviewDiaryBatches, rawLogs, sessions } from '../db/schema.js'
 import { citationsMatch, diaryAnalysisItemSchema, diaryEntriesSchema, MAX_SUGGESTIONS } from '../llm/diarySchemas.js'
+import { removeDiaryBatch } from '../personal/diaryDeletion.js'
 import type { AppVariables } from '../types.js'
 
 const batchSchema = z.object({
@@ -26,11 +27,28 @@ interviewHistoryRoute.get('/', async c => {
   const [history, diaries] = await Promise.all([
     db.select({ id: sessions.id, type: sessions.type, status: sessions.status, startedAt: sessions.createdAt })
       .from(sessions).where(eq(sessions.userId, userId)).orderBy(desc(sessions.createdAt), desc(sessions.id)),
-    db.select({ id: batches.id, createdAt: batches.createdAt, count: sql<number>`jsonb_array_length(${batches.entries})`,
+    db.select({ id: batches.id, createdAt: batches.createdAt, origin: batches.origin, count: sql<number>`jsonb_array_length(${batches.entries})`,
       filename: sql<string | null>`${batches.entries}->0->>'filename'`, hasAnalysis: sql<boolean>`${batches.analysis} IS NOT NULL` })
       .from(batches).where(eq(batches.userId, userId)).orderBy(desc(batches.createdAt), desc(batches.id)),
   ])
   return c.json({ sessions: history, diaries })
+})
+
+// Only dates, counts and pointers are sent to the calendar. The body is fetched separately on demand.
+interviewHistoryRoute.get('/diary-calendar', async c => {
+  const month = c.req.query('month')
+  if (!month || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return c.json({ error: '请选择有效月份。' }, 400)
+  const whitespace = '[[:space:]\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+'
+  const entries = await c.get('db').execute<{ date: string; batchId: string; index: number; filename: string | null; characters: number }>(sql`
+    SELECT entry.payload->>'date' AS date, batch.id AS "batchId", (entry.ordinal - 1)::integer AS index,
+      entry.payload->>'filename' AS filename,
+      char_length(regexp_replace(entry.payload->>'content', ${whitespace}, '', 'g')) AS characters
+    FROM ${batches} AS batch
+    CROSS JOIN LATERAL jsonb_array_elements(batch.entries) WITH ORDINALITY AS entry(payload, ordinal)
+    WHERE batch.user_id = ${c.get('userId')} AND entry.payload->>'date' LIKE ${month + '-%'}
+    ORDER BY date, batch.created_at, batch.id, entry.ordinal
+  `)
+  return c.json({ entries: [...entries] })
 })
 
 interviewHistoryRoute.get('/sessions/:id', async c => {
@@ -55,7 +73,7 @@ interviewHistoryRoute.post('/diaries', async c => {
     return c.json({ error: '分析里的引文与日记原文不符，请重新分析。' }, 400)
   }
   const id = createHash('sha256').update(JSON.stringify([userId, entries])).digest('hex')
-  await c.get('db').insert(batches).values({ id, userId, entries, analysis })
+  await c.get('db').insert(batches).values({ id, userId, entries, analysis, origin: 'import' })
     .onConflictDoUpdate({ target: batches.id, set: { analysis }, setWhere: eq(batches.userId, userId) })
   return c.json({ id, count: entries.length }, 201)
 })
@@ -63,10 +81,11 @@ interviewHistoryRoute.post('/diaries', async c => {
 interviewHistoryRoute.get('/diaries/:id', async c => {
   const [batch] = await c.get('db').select({ entries: batches.entries, analysis: batches.analysis }).from(batches)
     .where(owned(c.req.param('id'), c.get('userId')))
-  return batch ? c.json(batch) : c.json({ error: '找不到这批日记。' }, 404)
+  return batch ? c.json({ ...batch, analysis: batch.analysis?.filter(item => !item.profileDraft) ?? null }) : c.json({ error: '找不到这批日记。' }, 404)
 })
 
 interviewHistoryRoute.delete('/diaries/:id', async c => {
-  await c.get('db').delete(batches).where(owned(c.req.param('id'), c.get('userId')))
-  return c.body(null, 204)
+  const id = c.req.param('id'), userId = c.get('userId')
+  const deleted = await removeDiaryBatch(c.get('db'), userId, id)
+  return deleted ? c.body(null, 204) : c.json({ error: '找不到这批日记。' }, 404)
 })

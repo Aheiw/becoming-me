@@ -78,7 +78,7 @@ export function useChat(refreshProgress: () => Promise<void>, local: boolean) {
       const latest = regular.find(session => session.status === 'active') ?? regular[0]
       if (latest) await loadSession(latest.id)
       else await startSession()
-    } catch (err) { setChatError(err instanceof TypeError ? '无法连接本地 PCE，请确认服务正在运行后重试。' : (err as Error).message) }
+    } catch (err) { setChatError(err instanceof TypeError ? '无法连接本地成我，请确认服务正在运行后重试。' : (err as Error).message) }
     finally { setLoading(false) }
   }
 
@@ -87,7 +87,7 @@ export function useChat(refreshProgress: () => Promise<void>, local: boolean) {
     setLoading(true)
     setChatError('')
     try { await loadSession(id) }
-    catch (err) { setChatError(err instanceof TypeError ? '无法连接本地 PCE，请确认服务正在运行后重试。' : (err as Error).message) }
+    catch (err) { setChatError(err instanceof TypeError ? '无法连接本地成我，请确认服务正在运行后重试。' : (err as Error).message) }
     finally { setLoading(false) }
   }
 
@@ -111,7 +111,7 @@ export function useChat(refreshProgress: () => Promise<void>, local: boolean) {
       setSessionId(data.sessionId)
       setMessages([{ role: 'assistant', content: data.message }])
     } catch (err) {
-      if (local) setChatError(err instanceof TypeError ? '无法连接本地 PCE，请确认服务正在运行后重试。' : (err as Error).message)
+      if (local) setChatError(err instanceof TypeError ? '无法连接本地成我，请确认服务正在运行后重试。' : (err as Error).message)
     } finally {
       setLoading(false)
     }
@@ -183,7 +183,7 @@ export function useChat(refreshProgress: () => Promise<void>, local: boolean) {
       setMessages(prev => [...prev, { role: 'assistant', content: data.message }])
       if (data.remainingTurns !== undefined) setRemainingTurns(data.remainingTurns)
     } catch (err) {
-      if (local) setChatError(err instanceof TypeError ? '无法连接本地 PCE，请确认服务正在运行后重试。' : (err as Error).message)
+      if (local) setChatError(err instanceof TypeError ? '无法连接本地成我，请确认服务正在运行后重试。' : (err as Error).message)
       else console.error('[skip] failed:', err)
     } finally {
       setLoading(false)

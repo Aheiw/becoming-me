@@ -12,7 +12,7 @@
 .splashTitle {
   font-size: 24px;
   font-weight: 700;
-  color: var(--pce-accent);
+  color: var(--bm-accent);
   margin-bottom: 16px;
 }
 .splashDesc {
@@ -25,8 +25,8 @@
   padding: 14px 48px;
   border-radius: 12px;
   border: none;
-  background: var(--pce-accent);
-  color: var(--pce-paper);
+  background: var(--bm-accent);
+  color: var(--bm-paper);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
@@ -67,18 +67,18 @@
   white-space: pre-wrap;
 }
 .bubbleUser {
-  background: var(--pce-accent);
-  color: var(--pce-paper);
+  background: var(--bm-accent);
+  color: var(--bm-paper);
 }
 .bubbleAssistant {
-  background: var(--pce-paper);
+  background: var(--bm-paper);
   color: #222;
 }
 .typing {
   padding: 12px 16px;
   border-radius: 16px;
-  background: var(--pce-paper);
-  color: var(--pce-muted);
+  background: var(--bm-paper);
+  color: var(--bm-muted);
   font-size: 15px;
 }
 
@@ -95,8 +95,8 @@
   padding: 10px 32px;
   border-radius: 10px;
   border: none;
-  background: var(--pce-accent);
-  color: var(--pce-paper);
+  background: var(--bm-accent);
+  color: var(--bm-paper);
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
@@ -138,7 +138,7 @@
   flex: 1;
   padding: 10px 14px;
   border-radius: 12px;
-  border: 1px solid var(--pce-line);
+  border: 1px solid var(--bm-line);
   font-size: 15px;
   resize: none;
   outline: none;
@@ -148,8 +148,8 @@
   padding: 0 20px;
   border-radius: 12px;
   border: none;
-  background: var(--pce-accent);
-  color: var(--pce-paper);
+  background: var(--bm-accent);
+  color: var(--bm-paper);
   cursor: pointer;
   font-size: 15px;
 }
@@ -171,7 +171,7 @@
 .previewHeading {
   font-size: 22px;
   font-weight: 700;
-  color: var(--pce-accent);
+  color: var(--bm-accent);
   text-align: center;
   margin-bottom: 4px;
 }
@@ -182,14 +182,14 @@
   margin-bottom: 8px;
 }
 .previewCard {
-  background: var(--pce-paper);
+  background: var(--bm-paper);
   border-radius: 12px;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.07);
   overflow: hidden;
 }
 .previewCardTitle {
-  background: var(--pce-accent);
-  color: var(--pce-paper);
+  background: var(--bm-accent);
+  color: var(--bm-paper);
   font-size: 13px;
   font-weight: 600;
   padding: 10px 16px;
@@ -210,7 +210,7 @@
 }
 .timelineYear {
   font-weight: 700;
-  color: var(--pce-accent);
+  color: var(--bm-accent);
   min-width: 40px;
   flex-shrink: 0;
 }
@@ -227,8 +227,8 @@
 .factCategory {
   font-size: 11px;
   font-weight: 600;
-  color: var(--pce-paper);
-  background: var(--pce-accent);
+  color: var(--bm-paper);
+  background: var(--bm-accent);
   border-radius: 4px;
   padding: 2px 7px;
   flex-shrink: 0;
@@ -239,16 +239,16 @@
 }
 .vignetteQuote {
   font-size: 15px;
-  color: var(--pce-accent);
+  color: var(--bm-accent);
   font-style: italic;
   line-height: 1.7;
-  border-left: 3px solid var(--pce-accent);
+  border-left: 3px solid var(--bm-accent);
   padding-left: 14px;
   margin-bottom: 10px;
 }
 .vignetteScene {
   font-size: 13px;
-  color: var(--pce-muted);
+  color: var(--bm-muted);
   line-height: 1.7;
 }
 .previewLoading {
@@ -265,8 +265,8 @@
   padding: 14px 56px;
   border-radius: 12px;
   border: none;
-  background: var(--pce-accent);
-  color: var(--pce-paper);
+  background: var(--bm-accent);
+  color: var(--bm-paper);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;

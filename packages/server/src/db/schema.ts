@@ -108,6 +108,7 @@ export const interviewDiaryBatches = pgTable('interview_diary_batches', {
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   entries: jsonb('entries').$type<DiaryEntry[]>().notNull(),
   analysis: jsonb('analysis').$type<DiaryAnalysisItem[]>(),
+  origin: text('origin').$type<'legacy' | 'import' | 'journal'>().notNull().default('legacy'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 

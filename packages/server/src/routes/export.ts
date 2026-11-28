@@ -53,7 +53,7 @@ exportRoute.get('/download', async (c) => {
     return new Response(zipBuffer, {
       headers: {
         'Content-Type': 'application/zip',
-        'Content-Disposition': 'attachment; filename="personal_context.zip"',
+        'Content-Disposition': 'attachment; filename="becoming-me.zip"',
       },
     })
   } catch (err) {

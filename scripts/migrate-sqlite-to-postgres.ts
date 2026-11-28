@@ -5,22 +5,23 @@ import { drizzle } from 'drizzle-orm/libsql'
 import postgres from 'postgres'
 import { drizzle as drizzlePg } from 'drizzle-orm/postgres-js'
 import * as schema from '../packages/server/src/db/schema.js'
-import path from 'path'
+import { existsSync } from 'node:fs'
 
 // SQLite source database
-const SQLITE_PATH = process.env.SQLITE_PATH ?? path.join(process.cwd(), 'data', 'personal_context.db')
+const SQLITE_PATH = process.env.SQLITE_PATH
+if (!SQLITE_PATH || !existsSync(SQLITE_PATH)) throw new Error('请在 SQLITE_PATH 指定已有的 SQLite 源文件。')
 const sqliteClient = createClient({ url: `file:${SQLITE_PATH}` })
 const sqliteDb = drizzle(sqliteClient, { schema })
 
 // PostgreSQL target database
-const PG_URL = process.env.DATABASE_URL ?? 'postgresql://personal_context:personal_context@localhost:5432/personal_context'
+const PG_URL = process.env.DATABASE_URL ?? 'postgresql://becoming_me:becoming_me@localhost:5432/becoming_me'
 const pgClient = postgres(PG_URL)
 const pgDb = drizzlePg(pgClient, { schema })
 
 async function migrateData() {
   console.log('🔄 Starting migration from SQLite to PostgreSQL...')
   console.log(`📁 SQLite: ${SQLITE_PATH}`)
-  console.log(`🐘 PostgreSQL: ${PG_URL}`)
+
 
   try {
     // 1. Migrate users

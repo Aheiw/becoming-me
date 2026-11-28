@@ -11,7 +11,7 @@ userRoute.get('/', async (c) => {
 
 userRoute.patch('/', async (c) => {
   const body = await c.req.json<{ language?: string }>()
-  if (body.language && process.env.PCE_LOCAL !== '1') {
+  if (body.language && process.env.BECOMING_ME_LOCAL !== '1') {
     await updateUserLanguage(c.get('db'), c.get('userId'), body.language)
   }
   return c.json({ ok: true })

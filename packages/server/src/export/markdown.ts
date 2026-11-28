@@ -134,7 +134,7 @@ function buildIndex(userName: string, date: string, lang: string): string {
 ${rows.join('\n')}
 `
   }
-  return `# Personal Context Index
+  return `# Becoming Me · Personal Archive Index
 
 > Subject: ${userName}
 > Generated: ${date}

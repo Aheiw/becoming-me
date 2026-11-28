@@ -27,7 +27,7 @@ export async function processMessage(
     throw new Error('Session not found or already ended')
   }
 
-  const useHistory = process.env.PCE_LOCAL === '1' && session.type === 'regular'
+  const useHistory = process.env.BECOMING_ME_LOCAL === '1' && session.type === 'regular'
   const language = languageOverride ?? await getUserLanguage(db, userId)
 
   const userLog = { id: crypto.randomUUID(), userId, sessionId, role: 'user' as const, content: userMessage }

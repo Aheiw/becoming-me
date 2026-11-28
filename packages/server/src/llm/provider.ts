@@ -49,12 +49,19 @@ async function wrapStructuredOutputError<T>(fn: () => Promise<T>): Promise<T> {
 export function getLLM() {
   const provider = process.env.LLM_PROVIDER ?? 'deepseek'
   const model = process.env.LLM_MODEL
+  const local = process.env.BECOMING_ME_LOCAL === '1'
+  if (local && (!model || !process.env.OPENAI_BASE_URL)) throw new Error('请先在设置中配置模型。')
 
   switch (provider) {
     case 'openai':
       return createOpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
+        apiKey: local ? process.env.OPENAI_API_KEY ?? '' : process.env.OPENAI_API_KEY,
         baseURL: process.env.OPENAI_BASE_URL,
+        ...(local && { fetch: (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+          const headers = new Headers(init?.headers)
+          if (headers.get('authorization') === 'Bearer') headers.delete('authorization')
+          return fetch(input, { ...init, headers, redirect: 'error' })
+        } }),
       }).chat(model ?? 'gpt-4o-mini')
 
     case 'anthropic':

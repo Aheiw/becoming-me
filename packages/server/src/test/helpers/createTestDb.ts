@@ -11,7 +11,7 @@ const DRIZZLE_FOLDER = fileURLToPath(new URL('../../../drizzle', import.meta.url
 // テスト用PostgreSQL接続（環境変数 TEST_DATABASE_URL または Docker上のデフォルト）
 export async function createTestDb(): Promise<{ db: Db; teardown: () => Promise<void> }> {
   const connectionString = process.env.TEST_DATABASE_URL
-    ?? 'postgresql://personal_context:personal_context@localhost:5432/personal_context_test'
+    ?? 'postgresql://becoming_me:becoming_me@localhost:5432/becoming_me_test'
 
   const client = postgres(connectionString, { max: 1 })
   const db = drizzle(client, { schema })

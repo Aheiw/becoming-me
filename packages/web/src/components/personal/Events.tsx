@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { api, body, day, Field, Empty, Page, eventTime, type Chapter, type Data, type EventImportance, type LifeEvent, type OpenComparison, type Work } from './shared.js'
+import { api, body, day, Field, Empty, Page, eventTime, type Chapter, type Data, type EventImportance, type LifeContext, type LifeEvent, type OpenComparison, type Work } from './shared.js'
 import { eventImportance, hasTopics, importanceLabel, turningEvents } from '../../../../server/src/personal/reading.js'
+import { indexEventContexts } from '../../../../server/src/personal/contextEvents.js'
+import { contextNames, nameKey } from '../../../../server/src/personal/contextNames.js'
 import Perspectives from './Perspectives.js'
 import styles from './Personal.module.css'
 
-export type EventFields = { title: string; date: string; dateNote: string; cause: string; facts: string; outcome: string; outlook: string; prediction: string; impact: string; analysis: string; chapterId?: string; topics: string[]; importance: EventImportance | null }
-export const eventFields = (e?: Partial<EventFields>): EventFields => ({ title: e?.title ?? '', date: e?.date ?? '', dateNote: e?.dateNote ?? '', cause: e?.cause ?? '', facts: e?.facts ?? '', outcome: e?.outcome ?? '', outlook: e?.outlook ?? '', prediction: e?.prediction ?? '', impact: e?.impact ?? '', analysis: e?.analysis ?? '', chapterId: e?.chapterId || undefined, topics: e?.topics ?? [], importance: e?.importance ?? null })
-export function EventForm({ initial, chapters, onSave, actions, label = '保存事件' }: { initial: EventFields; chapters: Chapter[]; onSave: (value: EventFields) => Promise<unknown>; actions?: ReactNode; label?: string }) {
+export type EventFields = { title: string; date: string; dateNote: string; cause: string; facts: string; outcome: string; outlook: string; prediction: string; impact: string; analysis: string; chapterId?: string; topics: string[]; importance: EventImportance | null; contextIds: string[] }
+export const eventFields = (e?: Partial<EventFields>): EventFields => ({ title: e?.title ?? '', date: e?.date ?? '', dateNote: e?.dateNote ?? '', cause: e?.cause ?? '', facts: e?.facts ?? '', outcome: e?.outcome ?? '', outlook: e?.outlook ?? '', prediction: e?.prediction ?? '', impact: e?.impact ?? '', analysis: e?.analysis ?? '', chapterId: e?.chapterId || undefined, topics: e?.topics ?? [], importance: e?.importance ?? null, contextIds: e?.contextIds ?? [] })
+export function EventForm({ initial, chapters, contexts, suggestedContexts = [], onSave, actions, label = '保存事件' }: { initial: EventFields; chapters: Chapter[]; contexts: LifeContext[]; suggestedContexts?: string[]; onSave: (value: EventFields) => Promise<unknown>; actions?: ReactNode; label?: string }) {
   const [value, setValue] = useState(initial)
   const [busy, setBusy] = useState(false)
+  const [contextQuery, setContextQuery] = useState('')
   const [topicText, setTopicText] = useState(initial.topics.join('、'))
   const topics = [...new Set(topicText.split(/[、，,；;\n]/u).map(t => t.trim()).filter(Boolean))]
   const topicError = topics.length > 12 || topics.some(t => t.length > 24)
@@ -28,12 +31,29 @@ export function EventForm({ initial, chapters, onSave, actions, label = '保存�
     {([
       ['outlook', '当时的想法和选择理由', 4000], ['prediction', '当时的预期', 3000], ['impact', '这件事对我的影响', 4000], ['analysis', '可能体现什么（允许不确定）', 3000],
     ] as const).map(([key, title, max]) => <Field key={key} label={title}><textarea rows={2} maxLength={max} value={value[key]} onChange={e => edit(key, e.target.value)} /></Field>)}
+    <details className={styles.details} open={value.contextIds.length > 0 || suggestedContexts.length > 0 || undefined}>
+      <summary>关联人物与环境 · {value.contextIds.length}</summary>
+      {contexts.length ? <><Field label="查找档案"><input type="search" value={contextQuery} onChange={e => setContextQuery(e.target.value)} placeholder="姓名、别名、环境或人生阶段" /></Field>
+        {(['person', 'environment'] as const).map(kind => {
+          const options = contexts.filter(card => card.kind === kind && (value.contextIds.includes(card.id) || [...contextNames(card), card.role, card.period].some(s => nameKey(s).includes(nameKey(contextQuery)))))
+          return <div key={kind} className={styles.segment}><h3>{kind === 'person' ? '人物' : '环境'}</h3>
+            <div className={styles.picker}>{options.length ? options.map(card => <label key={card.id}>
+              <input type="checkbox" checked={value.contextIds.includes(card.id)} disabled={value.contextIds.length >= 1000 && !value.contextIds.includes(card.id)} onChange={e => {
+                const checked = e.currentTarget.checked
+                setValue(v => ({ ...v, contextIds: checked ? [...v.contextIds, card.id] : v.contextIds.filter(id => id !== card.id) }))
+              }} />{[card.name, card.role, card.period].filter(Boolean).join(' · ')}{suggestedContexts.includes(card.id) ? ' · 日记原话提到（待核对）' : ''}
+            </label>) : <p className={styles.muted}>没有符合的档案。</p>}</div>
+          </div>
+        })}
+      </> : <p className={styles.muted}>目前还没有档案。可以先保存事件，等人物或环境建好后再来关联。</p>}
+    </details>
     <button className={styles.primary} type="submit" disabled={topicError}>{busy ? '正在保存…' : label}</button>
   </fieldset></form>
 }
 
-export function EventPicker({ events, picked, change }: { events: LifeEvent[]; picked: string[]; change: (ids: string[]) => void }) {
-  return <details className={styles.details}><summary>选择参考事件 · {picked.length} 项</summary><div className={styles.picker}>{events.length ? events.map(e => <label key={e.id}><input type="checkbox" checked={picked.includes(e.id)} disabled={picked.length >= 12 && !picked.includes(e.id)} onChange={ev => change(ev.target.checked ? [...picked, e.id] : picked.filter(id => id !== e.id))} />{eventTime(e)} · {e.title}</label>) : <p>还没有事件。</p>}</div></details>
+export function EventPicker({ events, picked, change, limit = 12, suggested = [] }: { events: LifeEvent[]; picked: string[]; change: (ids: string[]) => void; limit?: number; suggested?: string[] }) {
+  const sorted = suggested.length ? [...events].sort((a, b) => Number(suggested.includes(b.id)) - Number(suggested.includes(a.id))) : events
+  return <details className={styles.details} open={suggested.length > 0 || undefined}><summary>选择参考事件 · {picked.length} 项</summary><div className={styles.picker}>{sorted.length ? sorted.map(e => <label key={e.id}><input type="checkbox" checked={picked.includes(e.id)} disabled={picked.length >= limit && !picked.includes(e.id)} onChange={ev => change(ev.target.checked ? [...picked, e.id] : picked.filter(id => id !== e.id))} />{eventTime(e)} · {e.title}{suggested.includes(e.id) ? ' · 原文相关（待核对）' : ''}</label>) : <p>还没有事件。</p>}</div></details>
 }
 function ChapterForm({ chapter, work, done }: { chapter?: Chapter; work: Work; done: () => void }) {
   const [title, setTitle] = useState(chapter?.title ?? ''), [introduction, setIntro] = useState(chapter?.introduction ?? ''), [order, setOrder] = useState(chapter?.order ?? 0)
@@ -54,7 +74,7 @@ function FollowupForm({ id, work, done }: { id: string; work: Work; done: () => 
   </form>
 }
 
-export default function Events({ data, work, target, open, openArticle, openInbox, busy, discuss }: { discuss: OpenComparison; data: Data; work: Work; target?: string; open: (id?: string) => void; openArticle: (id: string) => void; openInbox: () => void; busy: boolean }) {
+export default function Events({ data, work, target, open, openArticle, openInbox, openContext, busy, discuss }: { discuss: OpenComparison; data: Data; work: Work; target?: string; open: (id?: string) => void; openArticle: (id: string) => void; openInbox: () => void; openContext: (id: string) => void; busy: boolean }) {
   const [mode, setMode] = useState<'time' | 'chapter'>('time'), [editor, setEditor] = useState(''), [chapterEditor, setChapterEditor] = useState('')
   const [picked, setPicked] = useState<string[]>([]), [result, setResult] = useState<number>()
   const events = [...data.events].sort((a, b) => Number(Boolean(b.date)) - Number(Boolean(a.date)) || b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt))
@@ -66,6 +86,8 @@ export default function Events({ data, work, target, open, openArticle, openInbo
   useEffect(() => { if (!target) return; setEditor('') }, [target])
   const chapters = [...data.chapters].sort((a, b) => a.order - b.order)
   const event = events.find(e => e.id === target)
+  const eventContexts = useMemo(() => indexEventContexts(data.contexts), [data.contexts])
+  const linked = event ? [...(eventContexts.get(event.id)?.values() ?? [])] : []
   const related = data.articles.filter(a => !a.deleted && a.eventIds.includes(target ?? ''))
   const select = (id: string) => { setEditor(''); open(id) }
   const rows = (list: LifeEvent[]) => <ol className={styles.timeline}>{list.map(e => <li key={e.id}><button type="button" aria-current={e.id === target ? 'true' : undefined} onClick={() => select(e.id)}><time>{eventTime(e)}{e.date && e.dateNote && ` · ${e.date}`}</time><strong>{e.title}</strong>{(eventImportance(e, turns) !== 'regular' || !!e.topics?.length) && <small>{[eventImportance(e, turns) !== 'regular' && importanceLabel[eventImportance(e, turns)], ...e.topics ?? []].filter(Boolean).join(' · ')}</small>}</button></li>)}</ol>
@@ -85,7 +107,7 @@ export default function Events({ data, work, target, open, openArticle, openInbo
       <div className={styles.stack}>
         {editor === 'new' || (event && editor === `edit-${event.id}`) ? <div className={styles.card}>
           <h2>{editor === 'new' ? '新事件' : '编辑事件'}</h2>
-          <EventForm key={editor} chapters={chapters} initial={eventFields(editor === 'new' ? undefined : event)} actions={<button type="button" onClick={() => setEditor('')}>取消编辑</button>} onSave={async value => {
+          <EventForm key={editor} chapters={chapters} contexts={data.contexts} initial={eventFields(editor === 'new' ? undefined : { ...event, contextIds: linked.filter(link => link.direct).map(link => link.card.id) })} actions={<button type="button" onClick={() => setEditor('')}>取消编辑</button>} onSave={async value => {
             const edit = editor !== 'new' && event
             const saved = await work(() => api<LifeEvent>(`/events${edit ? `/${edit.id}` : ''}`, body(value, edit ? 'PATCH' : 'POST')), '事件已保存。')
             if (saved) select(saved.id)
@@ -99,6 +121,9 @@ export default function Events({ data, work, target, open, openArticle, openInbo
           {[['起因', event.cause], ['事情经过', event.facts], ['实际结果', event.outcome], ['当时的想法和理由', event.outlook], ['当时的预期', event.prediction], ['对我的影响', event.impact], ['解释或假设（不是事实）', event.analysis]].map(([name, value]) => value && <div key={name} className={styles.segment}><h3>{name}</h3><p className={styles.preserve}>{value}</p></div>)}
           {event.followups?.map(f => <div key={f.id} className={styles.segment}><h3>后来 · {f.date}</h3><p className={styles.preserve}>{f.outcome}</p>{f.reflection && <p className={styles.preserve}><strong>事后回看：</strong>{f.reflection}</p>}</div>)}
           {editor === `follow-${event.id}` && <FollowupForm id={event.id} work={work} done={() => setEditor('')} />}
+          <section className={styles.segment}><h3>相关人物与环境</h3>
+            {linked.length ? <div className={styles.actions}>{linked.map(({ card, direct }) => <button key={card.id} type="button" onClick={() => openContext(card.id)}>{card.kind === 'person' ? '人物' : '环境'} · {card.name}{direct ? '' : '（来自关系）'}</button>)}</div> : <p className={styles.muted}>还没有关联。可以在编辑事件时选择人物或环境。</p>}
+          </section>
           <Perspectives fixedEvent={event} events={[]} articles={related} openArticle={openArticle} discuss={discuss} busy={busy} />
         </article> : <Empty>选中一个事件，查看它的经过、当时的预期和后来的影响。</Empty>}
         <section className={styles.card}><h3>跨事件复盘</h3><p className={styles.muted}>挑出值得比较的经历。AI 会查找相关旧资料，提出可能的解释和反例，结果进收件箱，不直接写入百科。</p><EventPicker events={events} picked={picked} change={setPicked} />

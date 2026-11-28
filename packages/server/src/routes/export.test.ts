@@ -84,7 +84,7 @@ describe('GET /api/export/download', () => {
     const res = await req(app, 'GET', '/api/export/download')
     expect(res.status).toBe(200)
     expect(res.headers['content-type']).toMatch(/application\/zip/)
-    expect(res.headers['content-disposition']).toBe('attachment; filename="personal_context.zip"')
+    expect(res.headers['content-disposition']).toBe('attachment; filename="becoming-me.zip"')
   })
 
   it('generates zip with markdown files', async () => {

@@ -1,5 +1,5 @@
 export type InterviewSession = { id: string; type: 'regular' | 'onboarding'; status: 'active' | 'completed' | 'abandoned'; startedAt: string }
-export type InterviewDiaryBatch = { id: string; filename: string | null; count: number; createdAt: string; hasAnalysis: boolean }
+export type InterviewDiaryBatch = { id: string; filename: string | null; count: number; createdAt: string; hasAnalysis: boolean; origin: 'legacy' | 'import' | 'journal' }
 export type InterviewDiary = { date: string | null; filename: string | null; content: string }
 export type DiaryAnalysisItem = { category: string; fact: string; basis: string; citations: { source: number; quote: string }[] }
 export type InterviewDiaryDetails = { entries: InterviewDiary[]; analysis: DiaryAnalysisItem[] | null }

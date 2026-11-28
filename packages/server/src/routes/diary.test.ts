@@ -79,7 +79,7 @@ describe('diary analysis', () => {
       { type: 'progress', phase: 'analyze' },
       { type: 'summary', delta: '公开摘要片段' },
       { type: 'item', item },
-      { type: 'result', id: expect.any(String), suggestions: [item] },
+      { type: 'result', id: expect.any(String), suggestions: [item], profileChanged: 0 },
     ])
     expect(db.transaction).not.toHaveBeenCalled()
   })

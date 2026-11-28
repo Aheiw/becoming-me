@@ -50,6 +50,13 @@
       "when": 1795321859048,
       "tag": "0006_personal_workspace",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795321859049,
+      "tag": "0007_diary_origin",
+      "breakpoints": false
     }
   ]
 }

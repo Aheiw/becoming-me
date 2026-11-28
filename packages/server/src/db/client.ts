@@ -7,10 +7,10 @@ import { fileURLToPath } from 'url'
 import { migrate } from 'drizzle-orm/postgres-js/migrator'
 
 // PostgreSQL connection from DATABASE_URL environment variable
-const connectionString = process.env.DATABASE_URL ?? 'postgresql://personal_context:personal_context@localhost:5432/personal_context'
+const connectionString = process.env.DATABASE_URL ?? 'postgresql://becoming_me:becoming_me@localhost:5432/becoming_me'
 
 // Create PostgreSQL client
-const client = postgres(connectionString, { max: process.env.PCE_LOCAL === '1' ? 1 : 10 })
+const client = postgres(connectionString, { max: process.env.BECOMING_ME_LOCAL === '1' ? 1 : 10 })
 
 export const db = drizzle(client, { schema })
 
@@ -48,11 +48,11 @@ export async function ensureDefaultUser(targetDb: Db = db) {
     await targetDb.insert(schema.users).values({
       id: DEFAULT_USER_ID,
       name: 'Local User',
-      language: process.env.PCE_LOCAL === '1' ? 'zh' : 'ja',
+      language: process.env.BECOMING_ME_LOCAL === '1' ? 'zh' : 'ja',
       userType: 'free',
     })
   } else {
-    if (process.env.PCE_LOCAL === '1' && result[0].language !== 'zh') {
+    if (process.env.BECOMING_ME_LOCAL === '1' && result[0].language !== 'zh') {
       await updateUserLanguage(targetDb, DEFAULT_USER_ID, 'zh')
     }
     console.log('[DEBUG ensureDefaultUser] user exists, onboarding_completed_at =', result[0].onboardingCompletedAt)

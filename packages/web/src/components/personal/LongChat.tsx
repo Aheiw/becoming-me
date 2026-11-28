@@ -2,13 +2,23 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import SimpleMarkdown from '../SimpleMarkdown.js'
 import { interviewHistoryRequest, type InterviewDiaryDetails, type InterviewHistory } from '../../lib/interviewHistory.js'
 import { api, body, Empty, EvidenceList, Page, stamp, type Data, type Evidence, type Work } from './shared.js'
-import { EventDraftEditor } from './Inbox.js'
+import { ProposalCard } from './Inbox.js'
 import { DreamForm } from './Dreams.js'
 import styles from './Personal.module.css'
 
+type ChatMode = 'chat' | 'event' | 'dream'
 type Message = { id: string; role: 'assistant' | 'user'; content: string; createdAt: string; evidence: Evidence[]; dream?: boolean; dreamDraft?: { userId: string } }
 type Update = { type: 'delta'; text: string } | { type: 'saved'; id: string; userId: string; evidence: Evidence[]; dream: boolean; dreamDraft?: Message['dreamDraft'] }
-  | { type: 'progress'; phase: 'recall' | 'diary' | 'reply'; retrieval?: 'keyword' | 'hybrid' } | { type: 'error'; error: string } | { type: 'done'; count?: number; warning?: string; notice?: string }
+  | { type: 'progress'; phase: 'recall' | 'diary' | 'chat-history' | 'memory' | 'reply'; retrieval?: 'keyword' | 'hybrid' } | { type: 'error'; error: string } | { type: 'done'; count?: number; profileChanged?: number; warning?: string; notice?: string }
+
+function CitedReply({ message }: { message: Message }) {
+  const [requested, setRequested] = useState<{ id: string }>()
+  const refs = new Set(message.evidence.filter(source => source.kind === 'chat').map(source => source.label))
+  return <>
+    <SimpleMarkdown cite={id => refs.has(id) ? <button type="button" className={styles.link} onClick={() => setRequested({ id })}>{id}</button> : null}>{message.content}</SimpleMarkdown>
+    <EvidenceList evidence={message.evidence} title="本轮参考的原话" requested={requested} />
+  </>
+}
 
 export function Archive({ useDiary }: { useDiary: (id: string) => Promise<unknown> }) {
   const [opened, setOpened] = useState(false)
@@ -48,34 +58,32 @@ export function Archive({ useDiary }: { useDiary: (id: string) => Promise<unknow
   </details>
 }
 
-function ChatEventCard({ proposal, data, work }: { proposal: Data['proposals'][number]; data: Data; work: Work }) {
-  const [editing, setEditing] = useState(false)
-  const [classify, setClassify] = useState(false)
-  return <aside className={styles.chatSuggestion}><strong>把这段经历记进事件簿？</strong><p className={styles.preserve}>{proposal.title}</p>
-    <EvidenceList evidence={proposal.evidence} title="核对原话" />
-    {!editing && <div className={styles.actions}>
-      <button type="button" onClick={() => setEditing(true)}>核对并记录</button>
-      <button type="button" onClick={() => setClassify(value => !value)}>不是事件</button>
-      <button type="button" onClick={() => void work(() => api('/proposals/' + proposal.id, body({ action: 'dismiss' })), '已忽略，不写入事件簿。')}>忽略</button>
-    </div>}
-    {!editing && classify && <div className={styles.actions}><button type="button" onClick={() => void work(() => api('/proposals/' + proposal.id, body({ action: 'classify', kind: 'article' })), '已改成百科草稿，仍在收件箱等待确认。')}>改为百科草稿</button></div>}
-    {editing && <EventDraftEditor proposal={proposal} data={data} work={work} cancel={() => setEditing(false)} saved={() => setEditing(false)} />}
-  </aside>
-}
-function ChatDreamCard({ replyId, original, work, done }: { replyId: string; original: string; work: Work; done: () => void }) {
-  const [editing, setEditing] = useState(false)
-  const route = '/chat/dream-drafts/' + replyId
+function ChatDreamCard({ replyId, original, work }: { replyId: string; original: string; work: Work }) {
+  const [editing, setEditing] = useState(false), [busy, setBusy] = useState(false), [status, setStatus] = useState('')
+  const inFlight = useRef(false)
+  const draft = { title: '一次梦境', date: '', original, feelings: '', associations: '' }
+  async function finish(dream?: typeof draft) {
+    if (inFlight.current) return
+    inFlight.current = true; setBusy(true)
+    try {
+      const message = dream ? '已单独保存到梦境簿。' : '已忽略，未记入梦境簿。'
+      if (await work(() => api('/chat/dream-drafts/' + replyId, body(dream ? { action: 'save', dream } : { action: 'dismiss' })), message)) setStatus(message)
+    } finally { setBusy(false); inFlight.current = false }
+  }
+  if (status) return <aside className={styles.chatSuggestion} role="status">{status}</aside>
   return <aside className={styles.chatSuggestion}><strong>把这个梦单独存到梦境簿？</strong>
     <p className={styles.muted}>这一回合留在聊天历史里，不用于普通对话记忆，也不作为现实事件或人格依据。</p>
-    {editing ? <DreamForm initial={{ title: '一次梦境', date: '', original, feelings: '', associations: '' }} cancel={() => setEditing(false)} onSave={async dream => {
-      if (await work(() => api(route, body({ action: 'save', dream })), '已单独保存到梦境簿。')) done()
-    }} /> : <div className={styles.actions}><button type="button" onClick={() => setEditing(true)}>核对并保存</button><button type="button" onClick={async () => { if (await work(() => api(route, body({ action: 'dismiss' })), '已忽略，未记入梦境簿。')) done() }}>忽略</button></div>}
+    {editing ? <DreamForm initial={draft} cancel={() => setEditing(false)} onSave={finish} /> : <div className={styles.actions}>
+      <button className={styles.primary} type="button" disabled={busy || !original.trim() || original.trim().length > 24000} onClick={() => void finish(draft)}>{busy ? '正在处理…' : '确认保存梦境'}</button>
+      <button type="button" disabled={busy} onClick={() => setEditing(true)}>编辑后保存</button>
+      <button type="button" disabled={busy} onClick={() => void finish()}>忽略</button>
+    </div>}
   </aside>
 }
-export default function LongChat({ hidden, data, work, changed, openDiary }: { hidden: boolean; data?: Data; work: Work; changed: () => Promise<unknown>; openDiary: () => void }) {
+export default function LongChat({ allowDiary, setAllowDiary, hidden, data, work, changed, openDiary, openEvent, openArticle, openProfile }: { allowDiary: boolean; setAllowDiary: (value: boolean) => void; hidden: boolean; data?: Data; work: Work; changed: () => Promise<unknown>; openDiary: () => void; openEvent: (id: string) => void; openArticle: (id: string) => void; openProfile: () => void }) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
-  const [searchDiary, setSearchDiary] = useState(false)
+  const [modeChoice, setModeChoice] = useState<{ dreamId?: string; mode: ChatMode }>()
   const [loaded, setLoaded] = useState(false)
   const [pending, setPending] = useState(false)
   const [progress, setProgress] = useState('')
@@ -85,13 +93,15 @@ export default function LongChat({ hidden, data, work, changed, openDiary }: { h
   const current = useRef('')
   const request = useRef<AbortController | null>(null)
   const activeProposal = data?.proposals.find(p => p.id === data.focusId)
+  const profileFocus = activeProposal?.originId?.startsWith('profile:') ? activeProposal : undefined
   const activeDream = data?.dreams.find(d => d.id === data.dreamFocusId)
+  const mode = profileFocus ? 'chat' : modeChoice && modeChoice.dreamId === activeDream?.id ? modeChoice.mode : activeDream ? 'dream' : 'chat'
   const comparedArticle = data?.articles.find(a => !a.deleted && a.id === data.comparisonFocus?.articleId)
   const comparedEvent = data?.events.find(e => e.id === data.comparisonFocus?.eventId && (!data.comparisonFocus?.articleId || comparedArticle?.eventIds.includes(e.id)))
   const comparisonTitles = [comparedEvent?.title, comparedArticle?.title].filter(Boolean).join(' / ')
   const comparisonPrompt = '请对照我选的资料：当时的我怎么说？与现在的理解有什么不同？有哪些反例或缺失的证据？没有足够依据就直说。'
   const drafts = new Map<string, Data['proposals']>()
-  for (const p of data?.proposals ?? []) if (p.chatReplyId && p.kind === 'event' && p.status === 'pending') {
+  for (const p of data?.proposals ?? []) if (p.chatReplyId && !p.originId?.startsWith('profile:')) {
     const items = drafts.get(p.chatReplyId) ?? []
     items.push(p); drafts.set(p.chatReplyId, items)
   }
@@ -108,25 +118,26 @@ export default function LongChat({ hidden, data, work, changed, openDiary }: { h
     if (pendingRef.current || !loaded || !message) return
     const id = crypto.randomUUID(), assistant = `${id}-answer`, at = new Date().toISOString()
     const controller = new AbortController()
-    current.current = id; request.current = controller; pendingRef.current = true; setPending(true); setInput(''); setSearchDiary(false); setError(''); setProgress('正在查找相关往事…')
-    setMessages(old => [...old, { id, role: 'user', content: message, createdAt: at, evidence: [], dream: Boolean(activeDream) }, { id: assistant, role: 'assistant', content: '', createdAt: at, evidence: [], dream: Boolean(activeDream) }])
+    current.current = id; request.current = controller; pendingRef.current = true; setPending(true); setInput(''); setError(''); setProgress('正在准备回复…')
+    setMessages(old => [...old, { id, role: 'user', content: message, createdAt: at, evidence: [], dream: mode === 'dream' }, { id: assistant, role: 'assistant', content: '', createdAt: at, evidence: [], dream: mode === 'dream' }])
     let saved = false
     function handle(event: Update) {
+      if (event.type === 'delta' && current.current === id) setProgress('正在回复…')
       if (event.type === 'delta') setMessages(old => old.map(m => m.id === assistant ? { ...m, content: m.content + event.text } : m))
-      if (event.type === 'progress' && current.current === id) setProgress(event.phase === 'diary' ? '正在本地查找日记原文…' : event.phase === 'recall' ? '正在查找相关往事…' : '正在回复…')
+      if (event.type === 'progress' && current.current === id) setProgress(event.phase === 'diary' ? '正在本地查找日记原文…' : event.phase === 'chat-history' ? '正在本地查找长期对话原话…' : event.phase === 'memory' ? '正在查找相关事件和百科…' : '正在准备回复…')
       if (event.type === 'saved') {
         saved = true
         setMessages(old => old.map(m => m.id === assistant ? { ...m, id: event.id, evidence: event.evidence, dream: event.dream, dreamDraft: event.dreamDraft } : m.id === id ? { ...m, id: event.userId, dream: event.dream } : m))
-        if (current.current === id) { setProgress(event.dream ? '' : '回复已保存，正在整理待核对的建议…') }
+        if (current.current === id) { setProgress(event.dream ? '' : '回复已保存，正在整理画像与归档建议…') }
       }
       if (event.type === 'done') {
-        if (current.current === id) setProgress(event.warning ?? event.notice ?? (event.count ? `已放入 ${event.count} 条待核对建议。` : ''))
+        if (current.current === id) setProgress(event.warning ?? [event.profileChanged ? `已更新 ${event.profileChanged} 条画像。` : '', event.notice ?? (event.count ? `已放入 ${event.count} 条待核对建议。` : '')].filter(Boolean).join(' '))
         void changed().catch(() => {})
       }
       if (event.type === 'error') throw new Error(event.error)
     }
     try {
-      const res = await fetch('/api/personal/chat', { ...body({ message, searchDiary }), signal: controller.signal })
+      const res = await fetch('/api/personal/chat', { ...body({ message, mode, allowDiary }), signal: controller.signal })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? '请求失败，请重试。')
       if (!res.body) throw new Error('本次回复未收到。')
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
@@ -142,7 +153,7 @@ export default function LongChat({ hidden, data, work, changed, openDiary }: { h
           }
         }
         if (!saved) throw new Error('连接中断，未确认回复是否保存；可以刷新对话确认。')
-        if (current.current === id) setProgress(previous => previous === '回复已保存，正在整理待核对的建议…' ? '' : previous)
+        if (current.current === id) setProgress(previous => previous === '回复已保存，正在整理画像与归档建议…' ? '' : previous)
       } finally { await reader.cancel().catch(() => {}) }
     } catch (err) {
       if (!saved) { setMessages(old => old.filter(m => m.id !== id && m.id !== assistant)); setInput(value => value || message) }
@@ -151,30 +162,46 @@ export default function LongChat({ hidden, data, work, changed, openDiary }: { h
       if (current.current === id) { pendingRef.current = false; setPending(false); request.current = null }
     }
   }
-  return <div hidden={hidden}><Page kicker="同一个对话" title="长期对话" hint="随时接着聊。回想起旧事时，AI 会查相关资料；你可以纠正它的理解。" actions={<button type="button" onClick={openDiary}>分析日记</button>}>
+  return <div hidden={hidden}><Page kicker="同一个对话" title="长期对话" hint="随时接着聊。需要核对旧事时，AI 可以主动查资料。切换聊天方式不会新建对话。" actions={<button type="button" onClick={openDiary}>分析日记</button>}>
     {data?.comparisonFocus && <div className={styles.banner}><span>{comparisonTitles ? '已带入对照：' + comparisonTitles : '选中的对照资料已变更或移除。'}</span><div className={styles.actions}>
       {comparisonTitles && <button type="button" disabled={pending || !!input.trim()} onClick={() => setInput(comparisonPrompt)}>填入对照问题</button>}
       <button type="button" onClick={() => void work(() => api('/focus', body({ comparison: null })))}>退出对照</button>
     </div></div>}
-    {activeProposal && <div className={styles.banner}><span>正在核对：{activeProposal.title}</span><button type="button" onClick={() => void work(() => api('/focus', body({ id: null })))}>退出此话题</button></div>}
+    {profileFocus && <aside className={styles.card}>
+      <p className={styles.kicker}>个人画像 · 在同一个长期对话里核对</p>
+      <h2>{profileFocus.title}</h2>
+      <p><strong>当前判断：</strong>{profileFocus.basis}</p>
+      <p><strong>AI 想问你：</strong>{profileFocus.content}</p>
+      <EvidenceList evidence={profileFocus.evidence} />
+      <p className={styles.muted}>直接回答、补充经历或指出哪里不对。有新依据时，回复后的整理会自动修订画像，不会改写百科。</p>
+      <div className={styles.actions}>
+        <button type="button" onClick={openProfile}>查看画像</button>
+        <button type="button" disabled={pending} onClick={() => void work(() => api('/focus', body({ id: null })))}>结束核对</button>
+      </div>
+    </aside>}
+    {activeProposal && !profileFocus && <div className={styles.banner}><span>正在核对：{activeProposal.title}</span><button type="button" onClick={() => void work(() => api('/focus', body({ id: null })))}>退出此话题</button></div>}
     {data?.diaryFocusId && <div className={styles.banner}><span>这次对话带着已选日记批次的综合分析。查日记原文时默认查这批，也可以指定全部日记。</span><button type="button" onClick={() => void work(() => api('/focus', body({ clearDiary: true })))}>停止带入</button></div>}
-    {activeDream && <div className={styles.banner}><span>仅在这段讨论中带入梦境：{activeDream.title}</span><button type="button" onClick={() => void work(() => api('/focus', body({ dreamId: null })))}>结束梦境讨论</button></div>}
+    {mode === 'dream' && activeDream && <div className={styles.banner}><span>仅在这段讨论中带入梦境：{activeDream.title}</span><button type="button" onClick={async () => { if (await work(() => api('/focus', body({ dreamId: null })))) setModeChoice(undefined) }}>结束梦境讨论</button></div>}
     {error && <p role="alert" className={styles.error}>{error} {!loaded && <button type="button" onClick={() => void load()}>重试</button>}</p>}
     {!messages.length && <Empty>{loaded ? '可以从最近一件值得记的事，或你一直想弄懂的选择聊起。' : '正在读取长期对话…'}</Empty>}
     <div className={styles.conversation}>
       {messages.filter(m => m.content).map(m => <article className={m.role === 'user' ? styles.userMessage : styles.assistantMessage} key={m.id}>
         <small>{m.role === 'user' ? '我' : 'AI 分析搭档'}{m.dream && ' · 梦境讨论'} · {stamp(m.createdAt)}</small>
-        {m.role === 'assistant' ? <SimpleMarkdown>{m.content}</SimpleMarkdown> : <p className={styles.preserve}>{m.content}</p>}
-        <EvidenceList evidence={m.evidence} title="本轮参考的原话" />
-        {data && drafts.get(m.id)?.map(p => <ChatEventCard key={p.id} proposal={p} data={data} work={work} />)}
-        {m.dreamDraft && <ChatDreamCard replyId={m.id} original={originals.get(m.dreamDraft.userId) ?? ''} work={work} done={() => setMessages(old => old.map(item => item.id === m.id ? { ...item, dreamDraft: undefined } : item))} />}
+        {m.role === 'assistant' ? <CitedReply message={m} /> : <p className={styles.preserve}>{m.content}</p>}
+        {data && drafts.get(m.id)?.map(p => <ProposalCard key={p.id} p={p} data={data} work={work} openEvent={openEvent} openArticle={openArticle} compact />)}
+        {m.dreamDraft && <ChatDreamCard replyId={m.id} original={originals.get(m.dreamDraft.userId) ?? ''} work={work} />}
       </article>)}
       <div ref={bottom} />
     </div>
     <form onSubmit={send} className={styles.composer}>
       {progress && <p role="status">{progress}</p>}
       <label className={styles.field}><span>给分析搭档留言</span><textarea value={input} onChange={e => setInput(e.target.value)} maxLength={24000} rows={3} placeholder="最近有件事，我想重新看看……" /></label>
-      <label className={styles.archiveToggle}><input type="checkbox" checked={searchDiary} onChange={e => setSearchDiary(e.target.checked)} disabled={pending || Boolean(activeDream)} />本轮查日记原文</label>
+      <div className={styles.actions}>
+        <label>聊天方式 <select value={mode} disabled={pending || Boolean(profileFocus)} onChange={e => setModeChoice({ mode: e.target.value as ChatMode, dreamId: activeDream?.id })}>
+          <option value="chat">普通聊聊</option><option value="event">记事件</option><option value="dream">聊梦境</option>
+        </select></label>
+        <label className={styles.archiveToggle} title="关闭后不会新查日记或带入选中的日记分析；不影响已有聊天与存档条目。"><input type="checkbox" checked={allowDiary && mode !== 'dream'} onChange={e => setAllowDiary(e.target.checked)} disabled={pending || mode === 'dream'} />允许按需查日记</label>
+      </div>
       <div className={styles.actions}><button className={styles.primary} disabled={pending || !loaded || !input.trim()}>发送</button><small>发送会把本轮对话和选中的少量相关资料交给已配置的聊天 API。</small></div>
     </form>
     <Archive useDiary={diaryId => work(() => api('/focus', body({ diaryId })), '已带入这批历史分析，不会重新发送全部原文。')} />

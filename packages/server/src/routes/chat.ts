@@ -12,7 +12,7 @@ chatRoute.post('/', async (c) => {
   if (!body.sessionId || !body.message?.trim()) {
     return c.json({ error: 'sessionId and message are required' }, 400)
   }
-  const local = process.env.PCE_LOCAL === '1'
+  const local = process.env.BECOMING_ME_LOCAL === '1'
   const userId = c.get('userId')
   const key = JSON.stringify([userId, body.sessionId])
   if (local && pendingSessions.has(key)) return c.json({ error: '这一轮访谈还有一条消息正在回复，请稍候。' }, 409)
